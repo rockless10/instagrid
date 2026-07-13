@@ -208,7 +208,7 @@ Open source under the [MIT License](LICENSE) — fork it, modify it, learn from 
 
 <div align="center">
 
-*"In the age of algorithmic surveillance, curate in private and publish in public."*
+*"In the age of algorithmic surveillance, curate in private and post in public."*
 
 <br>
 
