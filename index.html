@@ -674,7 +674,7 @@
         </ul>
         <div class="rail-cat">FAQ</div>
         <details><summary>Do my photos stay private?</summary><p>By default, yes — instagrid runs in your browser, with no account and nothing uploaded. Your images stay on your device. The one exception is if you choose to create a shared board from the SYNC button: that uploads your photos to private storage so your other devices can load them, and anyone holding the board link can view and edit it. Until you do that, nothing leaves your device.</p></details>
-        <details><summary>How do captions work?</summary><p>Click the ✎ on any tile to write the caption for that post, with live counts against Instagram's 2,200-character and 30-hashtag limits. Captions are attached to the grid slot, so they travel with a tile when you rearrange the feed. The editor has <b>Copy caption</b> and <b>Download photo</b> buttons for posting one at a time, and exporting a ZIP includes a <code>captions.txt</code> numbered to match the image files.</p></details>
+        <details><summary>How do captions work?</summary><p>Click the ✎ on any tile to write the caption for that post, with live counts against Instagram's 2,200-character and 30-hashtag limits. Captions are attached to the grid slot, so they travel with a tile when you rearrange the feed. The editor has <b>Copy caption</b> to put the text on your clipboard and <b>Download original</b> to pull the photo back out as you imported it, uncropped. For the post-ready 1080px crop, use <b>EXPORT</b> — a ZIP there includes a <code>captions.txt</code> numbered to match the image files.</p></details>
         <details><summary>Do I need an account?</summary><p>No signup, no login, no email. Open it and start planning.</p></details>
         <details><summary>Is it really free?</summary><p>Yes — free and open-source (MIT). No ads, no upsells, nothing behind a paywall.</p></details>
         <details><summary>Where is my work saved?</summary><p>Locally, in your browser — on your device, never a server. Clearing your browser data removes it.</p></details>
@@ -771,7 +771,7 @@
     <div class="actions">
       <div class="cap-actions-left">
         <button class="btn" id="capCopy">⧉ Copy caption</button>
-        <button class="btn" id="capDownload">↓ Download photo</button>
+        <button class="btn" id="capDownload" title="Download the photo as imported, uncropped">↓ Download original</button>
       </div>
       <button class="btn" id="capCancel">Cancel</button>
       <button class="btn btn-accent" id="capSave">Save</button>
@@ -1166,7 +1166,7 @@ function saveCaption() {
 }
 
 /* Copy + download, so a finished post can leave the editor without a detour through EXPORT. */
-const CAP_COPY_LABEL = '⧉ Copy caption';
+const CAP_COPY_LABEL = '⧉ Copy caption', CAP_DL_LABEL = '↓ Download original';
 function resetCapCopy() {
   const b = $('capCopy');
   clearTimeout(resetCapCopy._t);
@@ -1194,14 +1194,22 @@ async function copyCaption() {
   clearTimeout(resetCapCopy._t);
   resetCapCopy._t = setTimeout(resetCapCopy, 1400);
 }
+/* The source photo as imported — not the cropped tile. EXPORT is where you go for the
+   post-ready 1080px crop; this is for getting the picture itself back out. */
 async function downloadCaptionPhoto() {
   if (capTarget == null) return;
-  const i = capTarget, b = $('capDownload');
-  b.disabled = true; b.textContent = 'Rendering…';
+  const t = tiles[capTarget]; if (!t) return;
+  const a = lib.find(x => x.id === t.imgId); if (!a || !a.src) return;
+  const b = $('capDownload');
+  b.disabled = true; b.textContent = 'Preparing…';
   let blob = null;
-  try { blob = await renderTileBlob(i, 'png'); } catch (_) {}
-  b.textContent = '↓ Download photo'; b.disabled = false;
-  if (blob) dl(blob, `grid_${String(i + 1).padStart(2, '0')}.png`);
+  try { blob = await dataUrlToBlob(a.src); } catch (_) {}
+  b.textContent = CAP_DL_LABEL; b.disabled = false;
+  if (!blob) return;
+  // keep the imported filename; fall back to the blob's own type when it carries no extension
+  const safe = (a.name || 'photo').replace(/[^a-zA-Z0-9._-]/g, '_');
+  const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+  dl(blob, /\.[a-zA-Z0-9]+$/.test(safe) ? safe : `${safe}.${ext}`);
 }
 
 capText.addEventListener('input', () => { updateCapMeta(); resetCapCopy(); });
