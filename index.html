@@ -281,8 +281,10 @@
     aspect-ratio: var(--ratio); touch-action: manipulation; user-select: none;
   }
   .cell.active { touch-action: none; }
-  .cell.has { cursor: grab; }
-  .cell.has:active { cursor: grabbing; }
+  /* click opens the post; the grab cursor only shows once a hold has claimed the tile */
+  .cell.has { cursor: pointer; }
+  .cell.has.active { cursor: grab; }
+  .cell.has.active:active { cursor: grabbing; }
   .cell.focus { outline: 2px solid var(--focus); outline-offset: -2px; z-index: 4; }
   .cell.sel { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 5; }
   .cell.drop { outline: 2px dashed var(--accent); outline-offset: -2px; z-index: 7; }
@@ -667,14 +669,15 @@
           <li><b>Rearrange</b> — grab a tile's ⠿ handle and drag it to a new spot.</li>
           <li><b>Reorder rows</b> — on desktop, grab the ⠿ handle on the left of any row and drag it up or down.</li>
           <li><b>Make room</b> — hit <b>⬇</b> beside a row to open an empty row there, pushing that row and everything below it down. <b>✕</b> takes a row back out. The grid always keeps a spare row at the bottom.</li>
-          <li><b>Reframe a photo</b> — drag inside it to move the crop; mouse wheel or pinch to zoom. On a trackpad, hold <b>Ctrl</b> while scrolling.</li>
-          <li><b>Zoom on mobile</b> — tap a tile to select it, then pinch with two fingers directly on the tile.</li>
+          <li><b>Open a post</b> — click a tile to open its caption editor.</li>
+          <li><b>Reframe a photo</b> — press and hold a tile (or just start dragging) to move the crop; mouse wheel or pinch to zoom. On a trackpad, hold <b>Ctrl</b> while scrolling. The zoom slider always acts on the tile you last held.</li>
+          <li><b>Zoom on mobile</b> — press and hold a tile to pick it up, then pinch with two fingers directly on the tile.</li>
           <li><b>Keyboard shortcuts</b> — <b>Ctrl Z</b> / <b>Ctrl Y</b> to undo / redo. <b>Delete</b> removes selected tiles.</li>
           <li><b>Export your work</b> — hit <b>EXPORT</b> to save every tile as a ready-to-post image, or your whole feed as one picture.</li>
         </ul>
         <div class="rail-cat">FAQ</div>
         <details><summary>Do my photos stay private?</summary><p>By default, yes — instagrid runs in your browser, with no account and nothing uploaded. Your images stay on your device. The one exception is if you choose to create a shared board from the SYNC button: that uploads your photos to private storage so your other devices can load them, and anyone holding the board link can view and edit it. Until you do that, nothing leaves your device.</p></details>
-        <details><summary>How do captions work?</summary><p>Click the ✎ on any tile to write the caption for that post, with live counts against Instagram's 2,200-character and 30-hashtag limits. Captions are attached to the grid slot, so they travel with a tile when you rearrange the feed. The editor has <b>Copy caption</b> to put the text on your clipboard and <b>Download original</b> to pull the photo back out as you imported it, uncropped. For the post-ready 1080px crop, use <b>EXPORT</b> — a ZIP there includes a <code>captions.txt</code> numbered to match the image files.</p></details>
+        <details><summary>How do captions work?</summary><p>Click any tile — or its ✎ — to write the caption for that post, with live counts against Instagram's 2,200-character and 30-hashtag limits. Captions are attached to the grid slot, so they travel with a tile when you rearrange the feed. The editor has <b>Copy caption</b> to put the text on your clipboard and <b>Download original</b> to pull the photo back out as you imported it, uncropped. For the post-ready 1080px crop, use <b>EXPORT</b> — a ZIP there includes a <code>captions.txt</code> numbered to match the image files.</p></details>
         <details><summary>Do I need an account?</summary><p>No signup, no login, no email. Open it and start planning.</p></details>
         <details><summary>Is it really free?</summary><p>Yes — free and open-source (MIT). No ads, no upsells, nothing behind a paywall.</p></details>
         <details><summary>Where is my work saved?</summary><p>Locally, in your browser — on your device, never a server. Clearing your browser data removes it.</p></details>
@@ -1237,10 +1240,24 @@ function setActive(i) {
 }
 
 /* ---------- pan + pinch + wheel-zoom ---------- */
-const g = { mode: null, i: null, pts: new Map(), pX: 0, pY: 0, z: 1, dist: 0, sx: 0, sy: 0, moved: false };
+/* A press on a tile is ambiguous until it resolves: let go straight away and you meant
+   "open this post"; keep holding (or drag) and you meant "re-frame this photo". Only the
+   second one claims the tile — so the zoom control always follows the photo you last HELD,
+   never one you merely clicked. The grip corner is untouched: it still reorders. */
+const HOLD_MS = 280;   // press this long and the tile switches to framing
+const MOVE_TOL = 4;    // px of travel that already reads as a drag, not a click
+const g = { mode: null, i: null, pts: new Map(), pX: 0, pY: 0, z: 1, dist: 0, sx: 0, sy: 0, lx: 0, ly: 0, moved: false, holdT: null };
 const distp = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function clearHold() { clearTimeout(g.holdT); g.holdT = null; }
 
 function wireCell(cell, i) {
+  // hand the tile over to framing: origin is wherever the pointer is now, so nothing jumps
+  function startPan() {
+    const t = tiles[i]; if (!t) return;
+    clearHold();
+    g.mode = 'pan'; g.pX = t.panX; g.pY = t.panY; g.sx = g.lx; g.sy = g.ly; g.moved = false;
+    setActive(i);
+  }
   cell.addEventListener('pointerdown', e => {
     if (e.target.closest('.grip, .check, .tools, .plus')) return;
     const t = tiles[i];
@@ -1257,20 +1274,32 @@ function wireCell(cell, i) {
     }
     // tap anywhere while in assign mode cancels it
     if (assignTarget >= 0) { exitAssign(); return; }
-    const touch = e.pointerType !== 'mouse';
     g.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (g.pts.size === 2 && g.i === i) {
-      const p = [...g.pts.values()]; g.mode = 'pinch'; g.dist = distp(p[0], p[1]); g.z = t.z == null ? 1 : t.z;
+      const p = [...g.pts.values()]; clearHold(); g.mode = 'pinch'; g.dist = distp(p[0], p[1]); g.z = t.z == null ? 1 : t.z;
+      setActive(i);
       try { cell.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); return;
     }
-    g.i = i; setActive(i);
-    if (!touch || active === i) { g.mode = 'pan'; g.pX = t.panX; g.pY = t.panY; g.sx = e.clientX; g.sy = e.clientY; g.moved = false; try { cell.setPointerCapture(e.pointerId); } catch (_) {} }
-    else { g.mode = 'tap'; }
+    g.i = i; g.mode = 'pending';
+    g.sx = g.lx = e.clientX; g.sy = g.ly = e.clientY; g.moved = false;
+    clearHold();
+    g.holdT = setTimeout(() => {
+      if (g.mode !== 'pending' || g.i !== i) return;
+      startPan();
+      if (navigator.vibrate) { try { navigator.vibrate(8); } catch (_) {} }
+    }, HOLD_MS);
+    try { cell.setPointerCapture(e.pointerId); } catch (_) {}
   });
   cell.addEventListener('pointermove', e => {
     if (g.i !== i) return;
     if (g.pts.has(e.pointerId)) g.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    g.lx = e.clientX; g.ly = e.clientY;
     const t = tiles[i]; if (!t) return; const a = lib.find(x => x.id === t.imgId); if (!a) return; const d = dims();
+    // a deliberate drag is a hold in a hurry — don't make the user wait out the timer
+    if (g.mode === 'pending' && distp({ x: g.sx, y: g.sy }, { x: e.clientX, y: e.clientY }) > MOVE_TOL) {
+      g.sx = g.lx; g.sy = g.ly;   // startPan re-origins here; the tolerance isn't lost motion
+      startPan();
+    }
     if (g.mode === 'pinch' && g.pts.size >= 2) {
       const p = [...g.pts.values()]; t.z = clamp(g.z * distp(p[0], p[1]) / (g.dist || 1), ZMIN, ZMAX);
       clampPan(t, a); const im = cell.querySelector('img'); if (im) applyImg(im, t, a, d); syncZoom(); e.preventDefault();
@@ -1284,9 +1313,12 @@ function wireCell(cell, i) {
   const end = e => {
     if (g.i !== i) return;
     g.pts.delete(e.pointerId);
+    const wasPending = g.mode === 'pending';
     if (g.mode === 'pan' && g.moved) commit();
-    if (g.pts.size === 0) { g.mode = null; g.i = null; }
+    if (g.pts.size === 0) { clearHold(); g.mode = null; g.i = null; }
     else if (g.mode === 'pinch' && g.pts.size < 2) { commit(); const p = [...g.pts.values()][0]; g.mode = 'pan'; g.sx = p.x; g.sy = p.y; const t = tiles[i]; if (t) { g.pX = t.panX; g.pY = t.panY; } }
+    // released before the hold landed and without travelling: that was a click
+    if (wasPending && e.type === 'pointerup' && tiles[i]) openCaption(i);
   };
   cell.addEventListener('pointerup', end);
   cell.addEventListener('pointercancel', end);
@@ -1470,9 +1502,14 @@ function makeChip(a, used) {
   return el;
 }
 
+/* Filename order, not import order — a natural sort so photo2 lands before photo10.
+   Only the tray display is sorted; `lib` keeps its original order everywhere else. */
+const byName = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const sortByName = list => list.slice().sort((x, y) => byName.compare(x.name || '', y.name || ''));
+
 function renderTray() {
   const usedIds = new Set(tiles.filter(Boolean).map(t => t.imgId));
-  const fresh = lib.filter(a => !usedIds.has(a.id)), used = lib.filter(a => usedIds.has(a.id));
+  const fresh = sortByName(lib.filter(a => !usedIds.has(a.id))), used = sortByName(lib.filter(a => usedIds.has(a.id)));
   [['fresh', fresh, 'trayFresh', 'freshN', 'nothing waiting — all placed'],
    ['used', used, 'trayUsed', 'usedN', 'no photos in the grid yet']].forEach(([key, list, bodyId, nId, empty]) => {
     const body = $(bodyId); body.innerHTML = '';
