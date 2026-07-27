@@ -1,7 +1,7 @@
 {
   "name": "mkgrid",
   "short_name": "mkgrid",
-  "description": "Plan your Instagram grid before you post. Local-only, open-source, no upload.",
+  "description": "Plan your Instagram grid before you post. Local by default, open-source, with optional cross-device sync.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0b0b0c",

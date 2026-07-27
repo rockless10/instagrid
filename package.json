@@ -1,0 +1,10 @@
+{
+  "name": "mkgrid",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Instagram grid planner — local-first, with optional shared-board sync",
+  "dependencies": {
+    "@vercel/blob": "^2.6.1"
+  }
+}

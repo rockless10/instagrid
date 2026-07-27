@@ -4,19 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>mkgrid — Instagram Grid Planner</title>
-<meta name="description" content="Plan your Instagram grid before you post. Drag in your photos, arrange the feed, set every crop, and export post-ready images — or the whole profile as one image. Local-only, open-source, no upload, no account.">
-<meta name="keywords" content="Instagram grid planner, feed planner, Instagram layout, 3:4 grid, plan Instagram feed, grid preview, puzzle feed, panorama feed, content planner, privacy, open source, no upload, mkgrid">
+<meta name="description" content="Plan your Instagram grid before you post. Drag in your photos, arrange the feed, set every crop, write captions, and export post-ready images — or the whole profile as one image. Local by default, open-source, no account; optional secret-link sync across your devices.">
+<meta name="keywords" content="Instagram grid planner, feed planner, Instagram layout, 3:4 grid, plan Instagram feed, grid preview, puzzle feed, panorama feed, content planner, captions, privacy, open source, mkgrid">
 <meta name="author" content="Chris Vrakas">
 <meta name="theme-color" content="#0b0b0c">
-<link rel="canonical" href="https://mkgrid.app/">
+<link rel="canonical" href="https://mkgrid.vercel.app/">
 
 <!-- Open Graph / Facebook -->
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://mkgrid.app/">
+<meta property="og:url" content="https://mkgrid.vercel.app/">
 <meta property="og:site_name" content="mkgrid">
 <meta property="og:title" content="mkgrid — plan your Instagram grid">
-<meta property="og:description" content="Drag in your photos, arrange the feed, set every crop, export. Local-only, open-source, nothing leaves your device.">
-<meta property="og:image" content="https://mkgrid.app/og-image.png">
+<meta property="og:description" content="Drag in your photos, arrange the feed, set every crop, write captions, export. Local by default, open-source, no account.">
+<meta property="og:image" content="https://mkgrid.vercel.app/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="mkgrid — a privacy-first Instagram grid planner">
@@ -24,10 +24,10 @@
 
 <!-- Twitter -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:url" content="https://mkgrid.app/">
+<meta name="twitter:url" content="https://mkgrid.vercel.app/">
 <meta name="twitter:title" content="mkgrid — plan your Instagram grid">
-<meta name="twitter:description" content="Drag in your photos, arrange the feed, set every crop, export. Local-only, open-source, nothing leaves your device.">
-<meta name="twitter:image" content="https://mkgrid.app/og-image.png">
+<meta name="twitter:description" content="Drag in your photos, arrange the feed, set every crop, write captions, export. Local by default, open-source, no account.">
+<meta name="twitter:image" content="https://mkgrid.vercel.app/og-image.png">
 <meta name="twitter:image:alt" content="mkgrid — a privacy-first Instagram grid planner">
 
 <!-- Favicons -->
@@ -44,7 +44,7 @@
   "@context": "https://schema.org",
   "@type": "WebApplication",
   "name": "mkgrid",
-  "url": "https://mkgrid.app/",
+  "url": "https://mkgrid.vercel.app/",
   "applicationCategory": "DesignApplication",
   "operatingSystem": "Any (web browser)",
   "description": "Privacy-first Instagram grid planner. Arrange, crop, and preview your feed, then export post-ready images — entirely in your browser. No upload, no account.",
@@ -56,8 +56,10 @@
     "Drag to reorder, pan and zoom to crop every tile",
     "Span one image across a full row (banner / panorama)",
     "Editable profile mockup — avatar, bio, stats, highlights",
+    "Write and store a caption for every planned post",
     "Export post-ready images or the whole feed as one image",
-    "Runs entirely in your browser — no upload, no account, no tracking"
+    "Runs in your browser — no account, no tracking",
+    "Optional secret-link sync between your own devices"
   ]
 }
 </script>
@@ -270,6 +272,16 @@
   .tools button:hover { border-color: var(--accent); color: #fff; }
   .tools button.span-btn { border-color: #8a6a00; color: #e0a020; }
   .tools button.span-btn:hover { border-color: #e0a020; color: #ffc24d; }
+  .tools button.cap-btn { font-size: 11px; padding: 0 5px; }
+  .tools button.cap-btn.on { border-color: var(--accent); color: var(--accent); }
+
+  /* caption badge — visible without hovering, so written posts read at a glance.
+     Bottom-left is the one free corner: grip owns top-left, check top-right, tools bottom-right. */
+  .cap-badge { position: absolute; bottom: 6px; left: 6px; width: 16px; height: 16px; border-radius: 3px;
+    background: rgba(0,0,0,.72); border: 1px solid var(--accent); color: var(--accent);
+    display: none; align-items: center; justify-content: center; font-size: 9px; line-height: 1;
+    z-index: 14; pointer-events: none; }
+  .cell.has-cap .cap-badge { display: flex; }
 
   .hint { margin-top: 10px; font-size: 11px; color: #8a8a8f; text-align: center; line-height: 1.7; }
   .rail { width: clamp(280px, 19vw, 360px); flex-shrink: 0; background: var(--surface); border-left: 1px solid var(--border); overflow-y: auto; padding: 22px 18px; display: flex; flex-direction: column; gap: 28px; }
@@ -336,6 +348,49 @@
   .pv-empty b { color: var(--accent); }
   .feed-preview { display: flex; align-items: center; justify-content: center; min-height: 220px; max-height: 56dvh; overflow: auto; background: #0a0a0b; border: 1px solid var(--border); border-radius: 6px; margin: 14px 0 4px; }
   .feed-img { max-width: 100%; height: auto; display: block; border-radius: 3px; }
+
+  /* caption editor */
+  .cap-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; }
+  .cap-thumb { width: 66px; flex-shrink: 0; aspect-ratio: var(--ratio); background: #000; border: 1px solid var(--border); border-radius: 4px; position: relative; overflow: hidden; }
+  .cap-thumb img { position: absolute; display: block; }
+  .cap-ta { width: 100%; min-height: 190px; resize: vertical; background: var(--elevated); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text); font: inherit; font-size: 13px; line-height: 1.6; padding: 12px; outline: none; }
+  .cap-ta:focus { border-color: var(--accent); }
+  .cap-meta { display: flex; gap: 16px; align-items: center; font-size: 11px; color: var(--text-dim); margin-top: 9px; flex-wrap: wrap; }
+  .cap-meta .over { color: #ff6b6b; }
+  .cap-meta .warn { color: #e0a020; }
+  .cap-tip { margin-left: auto; opacity: .7; }
+  @media (max-width: 820px) { .cap-tip { display: none; } }   /* no ⌘ key on a phone */
+
+  /* sync status in the footer bar */
+  .sync { display: inline-flex; align-items: center; gap: 6px; }
+  .sync .dot { width: 7px; height: 7px; border-radius: 50%; background: #6a6a70; }
+  .sync.off .txt { opacity: .5; }
+  .sync.synced .dot { background: #43c47a; }
+  .sync.syncing .dot { background: #e0a020; animation: syncpulse 1s infinite; }
+  .sync.offline .dot, .sync.error .dot, .sync.conflict .dot { background: #ff6b6b; }
+  @keyframes syncpulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+
+  /* sync / share board */
+  .sync-note { font-size: 11.5px; color: var(--text-dim); line-height: 1.65; margin-bottom: 14px; }
+  .sync-note b { color: var(--text); }
+  .sync-warn { font-size: 11px; color: #e0a020; line-height: 1.6; border-left: 2px solid #8a6a00;
+    padding: 8px 0 8px 11px; margin-bottom: 16px; }
+  .sync-link { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .sync-link input { flex: 1; min-width: 0; background: var(--elevated); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text); font: inherit; font-size: 11px; padding: 9px 10px; outline: none; }
+  .sync-link input:focus { border-color: var(--accent); }
+  .sync-danger { color: #ff6b6b; border-color: #7a2b2b; }
+  .sync-danger:hover { border-color: #ff6b6b; }
+
+  /* "changed on another device" banner */
+  .conflict-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 74px; z-index: 900;
+    display: none; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center;
+    background: var(--surface); border: 1px solid #8a6a00; border-radius: 8px;
+    padding: 11px 14px; font-size: 12px; color: var(--text); max-width: calc(100vw - 32px);
+    box-shadow: 0 8px 30px rgba(0,0,0,.6); }
+  .conflict-bar.open { display: flex; }
+  .conflict-bar .btn { padding: 6px 11px; font-size: 10px; }
   .feed-loading { color: var(--text-dim); font-size: 12px; padding: 40px; }
   .exp-prog-bar { height: 3px; background: var(--border); border-radius: 2px; margin: 14px 0 6px; overflow: hidden; }
   #exportProgFill { height: 100%; width: 0%; background: var(--accent); border-radius: 2px; transition: width .2s ease; }
@@ -447,7 +502,7 @@
 <!-- crawlable content for search engines; visually hidden, does not affect the UI -->
 <div style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0">
   <h1>mkgrid — a privacy-first Instagram grid planner</h1>
-  <p>mkgrid is a free, open-source Instagram grid planner that runs entirely in your browser. Plan and preview your Instagram feed before you post: drag in your photos, arrange the grid, crop each tile with pan and zoom, and span a single image across a full row for panorama or banner posts. mkgrid uses Instagram's real 3:4 thumbnail ratio, with 4:5 and 1:1 options for legacy content. Export post-ready images as a ZIP, or export your entire profile as one image to preview the whole feed. Everything happens locally on your device — no upload, no account, no cookies, no analytics, and no tracking. Your photos never leave your browser. mkgrid is a single static HTML file you can read, fork, and self-host under the MIT license.</p>
+  <p>mkgrid is a free, open-source Instagram grid planner that runs entirely in your browser. Plan and preview your Instagram feed before you post: drag in your photos, arrange the grid, crop each tile with pan and zoom, and span a single image across a full row for panorama or banner posts. mkgrid uses Instagram's real 3:4 thumbnail ratio, with 4:5 and 1:1 options for legacy content. Write and store the caption for each planned post, then export post-ready images as a ZIP — captions included as a text file — or export your entire profile as one image to preview the whole feed. Everything happens locally on your device by default: no account, no cookies, no analytics, and no tracking. If you want the same board on your phone, you can opt into secret-link sync, which is the only time anything is uploaded. mkgrid is open source under the MIT license, and you can read, fork, and self-host it.</p>
   <h2>Free Instagram feed planner — no login, no upload</h2>
   <p>Plan your Instagram layout, preview your grid aesthetic, sequence upcoming posts, and design a puzzle or panorama feed. A privacy-first alternative to subscription grid-planning apps.</p>
 </div>
@@ -469,6 +524,7 @@
       <button id="redoBtn" class="btn btn-icon" title="Redo">↪</button>
       <button id="clearBtn" class="btn">CLEAR</button>
       <button id="randomBtn" class="btn" title="Shuffle placed tiles (undoable)">⟳ RANDOM</button>
+      <button id="syncBtn" class="btn" title="Sync this board to your other devices">⇅ SYNC</button>
       <button id="exportBtn" class="btn btn-accent" disabled>↓ EXPORT</button>
     </div>
     <!-- Mobile zoom row — shown only on mobile, sits under the buttons -->
@@ -486,7 +542,7 @@
     <div class="sidebar">
       <div class="dropzone" id="dropzone">
         <strong>+ ADD PHOTOS</strong>
-        <span>tap or drag · stays on your device</span>
+        <span>tap or drag · kept on your device</span>
         <input type="file" id="fileInput" multiple accept="image/*" hidden>
       </div>
       <div class="tray" id="tray"><div class="tray-empty">no photos yet</div></div>
@@ -556,7 +612,8 @@
           <li><b>Export your work</b> — hit <b>EXPORT</b> to save every tile as a ready-to-post image, or your whole feed as one picture.</li>
         </ul>
         <div class="rail-cat">FAQ</div>
-        <details><summary>Do my photos stay private?</summary><p>Yes — completely. mkgrid runs entirely in your browser. There's no server, no upload, no account. Your images never leave your device.</p></details>
+        <details><summary>Do my photos stay private?</summary><p>By default, yes — mkgrid runs in your browser, with no account and nothing uploaded. Your images stay on your device. The one exception is if you choose to create a shared board from the SYNC button: that uploads your photos to private storage so your other devices can load them, and anyone holding the board link can view and edit it. Until you do that, nothing leaves your device.</p></details>
+        <details><summary>How do captions work?</summary><p>Click the ✎ on any tile to write the caption for that post, with live counts against Instagram's 2,200-character and 30-hashtag limits. Captions are attached to the grid slot, so they travel with a tile when you rearrange the feed. Exporting a ZIP includes a <code>captions.txt</code> numbered to match the image files, ready to copy and paste when you post.</p></details>
         <details><summary>Do I need an account?</summary><p>No signup, no login, no email. Open it and start planning.</p></details>
         <details><summary>Is it really free?</summary><p>Yes — free and open-source (MIT). No ads, no upsells, nothing behind a paywall.</p></details>
         <details><summary>Where is my work saved?</summary><p>Locally, in your browser — on your device, never a server. Clearing your browser data removes it.</p></details>
@@ -587,10 +644,10 @@
 
 <div class="footer" id="statusbar">
     <div class="sb-zone sb-left">
-      <span class="sb-chev">❯</span><span class="sb-brand">mkgrid</span><span class="sb-sep">//</span><span class="sb-tag">private by default</span><span class="sb-cur">▮</span>
+      <span class="sb-chev">❯</span><span class="sb-brand">mkgrid</span><span class="sb-sep">//</span><span class="sb-tag">local by default</span><span class="sb-cur">▮</span>
     </div>
     <div class="sb-zone sb-right">
-      <span id="saved" style="opacity:.35; color:var(--accent); transition:opacity .2s;">● saved</span><span class="sb-pipe">|</span><span class="sb-dom">mkgrid.app</span>
+      <span id="saved" style="opacity:.35; color:var(--accent); transition:opacity .2s;">● saved</span><span class="sb-pipe">|</span><span id="syncStatus" class="sync off" title="Sync status"><span class="dot"></span><span class="txt">local only</span></span>
     </div>
   </div>
 
@@ -635,6 +692,70 @@
   </div>
 </div>
 
+<div class="modal" id="captionModal" role="dialog" aria-modal="true" aria-labelledby="capTitle">
+  <div class="card">
+    <div class="cap-head">
+      <div class="cap-thumb" id="capThumb"><img alt=""></div>
+      <div>
+        <h3 id="capTitle">Caption</h3>
+        <p class="sub" id="capSub">Post 1</p>
+      </div>
+    </div>
+    <textarea class="cap-ta" id="capText" placeholder="Write the caption for this post…" spellcheck="true"></textarea>
+    <div class="cap-meta">
+      <span id="capCount">0 / 2,200</span>
+      <span id="capTags">0 / 30 hashtags</span>
+      <span class="cap-tip">⌘↵ to save</span>
+    </div>
+    <div class="actions">
+      <button class="btn" id="capCancel">Cancel</button>
+      <button class="btn btn-accent" id="capSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="syncModal" role="dialog" aria-modal="true" aria-labelledby="syncTitle">
+  <div class="card">
+    <h3 id="syncTitle">Sync across devices</h3>
+
+    <div id="syncOff">
+      <p class="sub">This board is local to this browser right now.</p>
+      <p class="sync-note">Creating a shared board gives you one <b>secret link</b>. Open it on your
+        phone and you get the same grid — photos, crops, captions and all — with edits flowing both ways.</p>
+      <div class="sync-warn">Your photos get uploaded to your own private storage so your other
+        devices can fetch them. Anyone with the link can view and edit this board, so treat it like a
+        password. This is the only part of mkgrid that leaves your device.</div>
+      <div class="actions">
+        <button class="btn" id="syncCancel">Cancel</button>
+        <button class="btn btn-accent" id="syncCreate">Create shared board</button>
+      </div>
+    </div>
+
+    <div id="syncOn" hidden>
+      <p class="sub">Open this link on your phone to edit the same board.</p>
+      <div class="sync-link">
+        <input id="syncUrl" readonly spellcheck="false" aria-label="Secret board link">
+        <button class="btn" id="syncCopy">Copy</button>
+        <button class="btn" id="syncShare" hidden>Share</button>
+      </div>
+      <p class="sync-note" id="syncMeta"></p>
+      <div class="sync-warn">Anyone with this link can edit the board. If it leaks, rotate the
+        secret — that invalidates the old link everywhere, including on your own other devices.</div>
+      <div class="actions">
+        <button class="btn sync-danger" id="syncRotate">Rotate secret</button>
+        <button class="btn sync-danger" id="syncDetach">Stop syncing here</button>
+        <button class="btn btn-accent" id="syncDone">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="conflict-bar" id="conflictBar" role="alert">
+  <span id="conflictMsg">This board changed on another device.</span>
+  <button class="btn" id="conflictReload">Load theirs</button>
+  <button class="btn" id="conflictKeep">Keep mine</button>
+</div>
+
 <div id="ghost"><img alt=""></div>
 <canvas id="canvas"></canvas>
 
@@ -649,6 +770,7 @@ let lib = [];                   // { id, name, src, w, h }
 let sel = new Set();
 let active = null;
 let RW = 3, RH = 4; const GAP = 2, ZMIN = 0, ZMAX = 5;
+const PROFILE_IMG_MAX = 512;    // avatar + highlight covers are only ever drawn small
 let stageTile = 0;
 
 const grid = $('grid'), tray = $('tray'), fileInput = $('fileInput'), dropzone = $('dropzone');
@@ -660,16 +782,27 @@ const ghost = $('ghost'), ghostImg = ghost.querySelector('img');
 let db = null, ok = false;
 function openDB() {
   return new Promise(res => {
-    let r; try { r = indexedDB.open('gridctrl_mvp', 1); } catch (e) { return res(null); }
+    // An open request can also fire `blocked` (another tab holds an upgrade) or simply
+    // never settle. Everything downstream — render, profile, sync — is awaited on this,
+    // so a request that hangs would freeze the whole app on a blank grid. Always settle:
+    // the app already degrades to memory-only when this resolves null.
+    let done = false;
+    const finish = v => { if (!done) { done = true; res(v); } };
+    let r; try { r = indexedDB.open('gridctrl_mvp', 1); } catch (e) { return finish(null); }
     r.onupgradeneeded = e => { const d = e.target.result; if (!d.objectStoreNames.contains('assets')) d.createObjectStore('assets', { keyPath: 'id' }); if (!d.objectStoreNames.contains('state')) d.createObjectStore('state', { keyPath: 'key' }); };
-    r.onsuccess = () => res(r.result); r.onerror = () => res(null);
+    r.onsuccess = () => finish(r.result);
+    r.onerror = () => finish(null);
+    r.onblocked = () => finish(null);
+    setTimeout(() => finish(null), 4000);
   });
 }
 const put = (s, v) => new Promise(res => { if (!db) return res(); try { const t = db.transaction(s, 'readwrite'); t.objectStore(s).put(v); t.oncomplete = res; t.onerror = () => { console.error('mkgrid: save failed', t.error); res(); }; } catch (e) { console.error('mkgrid: save error', e); res(); } });
 const del = (s, k) => new Promise(res => { if (!db) return res(); try { const t = db.transaction(s, 'readwrite'); t.objectStore(s).delete(k); t.oncomplete = res; t.onerror = res; } catch (e) { res(); } });
 const all = s => new Promise(res => { if (!db) return res([]); try { const t = db.transaction(s, 'readonly'); const q = t.objectStore(s).getAll(); q.onsuccess = () => res(q.result || []); q.onerror = () => res([]); } catch (e) { res([]); } });
 let saveT = null;
-function save() { if (!ok) return; clearTimeout(saveT); saveT = setTimeout(() => { put('state', { key: 'layout', rows, RW, RH, tiles }); flashSaved(); }, 300); }
+/* schedulePush() sits outside the `ok` guard on purpose: local persistence and cloud
+   sync are independent, and a browser that blocks IndexedDB must still sync. */
+function save() { schedulePush(); if (!ok) return; clearTimeout(saveT); saveT = setTimeout(() => { put('state', { key: 'layout', rows, RW, RH, tiles }); flashSaved(); }, 300); }
 function flashSaved() { const el = $('saved'); el.style.opacity = '1'; clearTimeout(flashSaved._t); flashSaved._t = setTimeout(() => el.style.opacity = '.35', 1100); }
 
 /* ---------- history ---------- */
@@ -745,6 +878,7 @@ function render() {
     grip.innerHTML = '<svg viewBox="0 0 8 8" fill="#e0a020" xmlns="http://www.w3.org/2000/svg"><circle cx="1.5" cy="1.5" r="1"/><circle cx="4" cy="1.5" r="1"/><circle cx="6.5" cy="1.5" r="1"/><circle cx="1.5" cy="4" r="1"/><circle cx="4" cy="4" r="1"/><circle cx="6.5" cy="4" r="1"/><circle cx="1.5" cy="6.5" r="1"/><circle cx="4" cy="6.5" r="1"/><circle cx="6.5" cy="6.5" r="1"/></svg>';
     const check = document.createElement('div'); check.className = 'check'; check.innerHTML = '<svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg>';
     const tools = document.createElement('div'); tools.className = 'tools';
+    const capBadge = document.createElement('div'); capBadge.className = 'cap-badge'; capBadge.textContent = '✎'; capBadge.title = 'Has a caption';
     // per-cell file input for mobile direct-upload
     const cellInput = document.createElement('input'); cellInput.type = 'file'; cellInput.accept = 'image/*'; cellInput.hidden = true;
     const cellIdx = i; // capture for closure
@@ -757,7 +891,7 @@ function render() {
       e.stopPropagation();
       cellInput.click();
     });
-    cell.append(img, plus, grip, check, tools, cellInput);
+    cell.append(img, plus, grip, check, tools, capBadge, cellInput);
 
     if (t && t.imgId) {
       const a = lib.find(x => x.id === t.imgId);
@@ -770,6 +904,9 @@ function render() {
           tools.append(rm);
           if (i % 3 === 0) {
             const row = Math.floor(i / 3);
+            // a banner row is one post, so its caption lives on the leftmost slice
+            tools.append(capBtn(i));
+            if (t.cap) cell.classList.add('has-cap');
             const mu = mkBtn('↑', () => { swapRows(row, row - 1); }); mu.className = 'row-move'; mu.title = 'Move row up'; if (row === 0) mu.disabled = true;
             const md = mkBtn('↓', () => { swapRows(row, row + 1); }); md.className = 'row-move'; md.title = 'Move row down'; if (row === rows - 1) md.disabled = true;
             tools.append(mu, md);
@@ -777,7 +914,8 @@ function render() {
           check.addEventListener('click', e => { e.stopPropagation(); toggleSel(i); });
         } else {
           const rm = mkBtn('✕', () => { tiles[i] = null; sel.delete(i); if (active === i) active = null; render(); updateExportUI(); syncZoom(); commit(); });
-          tools.append(rm);
+          tools.append(rm, capBtn(i));
+          if (t.cap) cell.classList.add('has-cap');
           // row-move in tools for leftmost cells — mobile only (desktop uses grip column)
           if (i % 3 === 0) {
             const row = Math.floor(i / 3);
@@ -912,6 +1050,78 @@ document.addEventListener('pointercancel', e => {
   rowDrag = null;
 });
 function mkBtn(label, fn) { const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', e => { e.stopPropagation(); fn(); }); return b; }
+
+/* ---------- captions ----------
+   A caption belongs to the grid slot (the planned post), not to the photo: it travels
+   with the tile when you reorder, and survives swapping a different photo into the slot. */
+const CAP_MAX = 2200, CAP_TAGS_MAX = 30;
+const captionModal = $('captionModal'), capText = $('capText');
+let capTarget = null, capTrigger = null;
+
+function capBtn(i) {
+  const b = mkBtn('✎', () => openCaption(i));
+  b.classList.add('cap-btn');
+  if (tiles[i] && tiles[i].cap) b.classList.add('on');
+  b.title = (tiles[i] && tiles[i].cap) ? 'Edit caption' : 'Write a caption';
+  b.setAttribute('aria-label', b.title);
+  return b;
+}
+
+function countTags(s) { return ((s || '').match(/#[\p{L}\p{N}_]+/gu) || []).length; }
+
+function updateCapMeta() {
+  const s = capText.value, n = s.length, tags = countTags(s);
+  const c = $('capCount'), tg = $('capTags');
+  c.textContent = n.toLocaleString() + ' / ' + CAP_MAX.toLocaleString();
+  c.className = n > CAP_MAX ? 'over' : (n > CAP_MAX * 0.9 ? 'warn' : '');
+  tg.textContent = tags + ' / ' + CAP_TAGS_MAX + ' hashtag' + (tags === 1 ? '' : 's');
+  tg.className = tags > CAP_TAGS_MAX ? 'over' : '';
+}
+
+function openCaption(i) {
+  const t = tiles[i]; if (!t) return;
+  capTarget = i; capTrigger = document.activeElement;
+  capText.value = t.cap || '';
+  $('capSub').textContent = 'Tile ' + String(i + 1).padStart(2, '0') +
+    ' · row ' + (Math.floor(i / 3) + 1) + (t.banner ? ' (spanned row)' : ', column ' + (i % 3 + 1));
+  // thumbnail uses the same placement math as the grid, so the crop matches what you see
+  const thumb = $('capThumb'), tim = thumb.querySelector('img'), a = lib.find(x => x.id === t.imgId);
+  if (a) { setImgSrc(tim, a); applyImg(tim, t, a, { w: 66, h: 66 * RH / RW }); tim.style.display = ''; }
+  else tim.style.display = 'none';
+  updateCapMeta();
+  captionModal.classList.add('open');
+  capText.focus(); capText.setSelectionRange(capText.value.length, capText.value.length);
+}
+
+function closeCaption() {
+  captionModal.classList.remove('open');
+  capTarget = null;
+  if (capTrigger && capTrigger.focus) capTrigger.focus();
+  capTrigger = null;
+}
+
+function saveCaption() {
+  if (capTarget == null) return closeCaption();
+  const t = tiles[capTarget]; const v = capText.value.trim();
+  if (t) { if (v) t.cap = v; else delete t.cap; }
+  closeCaption();
+  render(); commit();
+}
+
+capText.addEventListener('input', updateCapMeta);
+$('capSave').addEventListener('click', saveCaption);
+$('capCancel').addEventListener('click', closeCaption);
+captionModal.addEventListener('click', e => { if (e.target === captionModal) closeCaption(); });
+captionModal.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { e.stopPropagation(); closeCaption(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveCaption(); return; }
+  if (e.key !== 'Tab') return;
+  const f = [...captionModal.querySelectorAll('button:not([disabled]), textarea')].filter(el => el.offsetParent !== null);
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
 
 function toggleSel(i) { if (!tiles[i]) return; sel.has(i) ? sel.delete(i) : sel.add(i); const c = grid.children[i]; if (c) c.classList.toggle('sel', sel.has(i)); updateExportUI(); }
 function setActive(i) {
@@ -1064,7 +1274,7 @@ function wireChip(el, a) {
   };
   el.addEventListener('pointerup', fin); el.addEventListener('pointercancel', fin);
 }
-function placeAsset(i, imgId) { tiles[i] = { imgId, z: 1, panX: 0, panY: 0 }; normalizeBanners(); sel.delete(i); active = i; render(); updateExportUI(); syncZoom(); commit(); }
+function placeAsset(i, imgId) { const cap = tiles[i] && tiles[i].cap; tiles[i] = { imgId, z: 1, panX: 0, panY: 0 }; if (cap) tiles[i].cap = cap; normalizeBanners(); sel.delete(i); active = i; render(); updateExportUI(); syncZoom(); commit(); }
 
 /* ---------- assets ---------- */
 /* shrink oversized imports before storing — keeps IndexedDB lean.
@@ -1126,6 +1336,7 @@ function addFile(file) {
     const id = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random());
     cacheDisplayBlob(id, file);   // use original File — no size limit on iOS
     const a = { id, name: file.name, src: ds.src, w: ds.w, h: ds.h }; lib.push(a); put('assets', a); renderTray();
+    schedulePush();   // a tray-only add never reaches save(), so nudge sync directly
   };
   r.readAsDataURL(file);
 }
@@ -1323,6 +1534,26 @@ async function renderCircleBlob(cropState, exportW, fmt) {
   return await new Promise(r => c.toBlob(r, fmt === 'jpg' ? 'image/jpeg' : 'image/png', fmt === 'jpg' ? 0.92 : undefined));
 }
 
+/* captions.txt — one block per exported tile, keyed to its filename so you can
+   copy-paste while posting. Returns '' when nothing is captioned, so the file is
+   only added to the ZIP when it would actually carry something. */
+function captionsText(list, ext) {
+  const capFor = i => {
+    const t = tiles[i]; if (!t) return null;
+    if (t.banner) { const lead = tiles[t.banner.row * 3]; return t.banner.col === 0 ? (lead && lead.cap) || '' : null; }
+    return t.cap || '';
+  };
+  if (!list.some(i => capFor(i))) return '';
+  const out = [];
+  list.forEach(i => {
+    const name = `grid_${String(i + 1).padStart(2, '0')}.${ext}`;
+    const t = tiles[i], c = capFor(i);
+    if (c === null) { out.push(`${name}\n(slice of the spanned row above — same post)`); return; }
+    out.push(`${name}${t && t.banner ? ' (spanned row)' : ''}\n${c || '(no caption)'}`);
+  });
+  return out.join('\n\n') + '\n';
+}
+
 async function exportZip() {
   const fmt = selectedFmt(), ext = fmt === 'jpg' ? 'jpg' : 'png', files = [];
   const safe = s => s.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -1363,6 +1594,10 @@ async function exportZip() {
     const hBlob = await renderCircleBlob(h.cover, 1080, fmt);
     if (hBlob) { files.push({ name: `highlight_cover_${String(hi + 1).padStart(2, '0')}_${safe(h.label || 'cover')}.${ext}`, data: new Uint8Array(await hBlob.arrayBuffer()) }); setProgress(`highlight ${hi + 1}`); }
   }
+
+  // captions, numbered to match the exported tile filenames
+  const capTxt = captionsText(tileList, ext);
+  if (capTxt) files.push({ name: 'captions.txt', data: new TextEncoder().encode(capTxt) });
 
   if (btn) { btn.disabled = false; btn.textContent = 'Download'; }
   if (progWrap) { setTimeout(() => { progWrap.hidden = true; progFill.style.width = '0%'; }, 1200); }
@@ -1428,7 +1663,10 @@ function setRatio(w, h) {
 function spanRow(rowIdx, imgId) {
   const start = rowIdx * 3;
   if (start + 2 >= total) return;
+  // the row becomes one post — carry the leftmost slot's caption onto it
+  const cap = tiles[start] && tiles[start].cap;
   for (let c = 0; c < 3; c++) { sel.delete(start + c); tiles[start + c] = { imgId, banner: { col: c, row: rowIdx }, bz: 1, panX: 0, panY: 0 }; }
+  if (cap) tiles[start].cap = cap;
   active = start; render(); updateExportUI(); syncZoom(); commit();
 }
 function removeBannerRow(rowIdx) {
@@ -1443,7 +1681,7 @@ function normalizeBanners() {
       a.banner.row === r && b.banner.row === r && c.banner.row === r &&
       a.imgId === b.imgId && b.imgId === c.imgId &&
       a.banner.col === 0 && b.banner.col === 1 && c.banner.col === 2;
-    [s, s + 1, s + 2].forEach(k => { if (tiles[k] && tiles[k].banner && !okRow) tiles[k] = { imgId: tiles[k].imgId, z: 1, panX: 0, panY: 0 }; });
+    [s, s + 1, s + 2].forEach(k => { if (tiles[k] && tiles[k].banner && !okRow) { const cap = tiles[k].cap; tiles[k] = { imgId: tiles[k].imgId, z: 1, panX: 0, panY: 0 }; if (cap) tiles[k].cap = cap; } });
   }
 }
 
@@ -1694,7 +1932,7 @@ async function showFeedPreview() {
 /* ---------- editable profile ---------- */
 let profile = { handle: 'your_handle', name: 'Your Name', bio: 'Tap to write your bio ✍', link: 'yourlink.com', posts: '0', followers: '0', following: '0', avatar: null, hlOpen: false, highlights: [] };
 let profSaveT = null;
-function saveProfile() { if (!ok) return; clearTimeout(profSaveT); profSaveT = setTimeout(() => { put('state', { key: 'profile', data: profile }); flashSaved(); }, 300); }
+function saveProfile() { schedulePush(); if (!ok) return; clearTimeout(profSaveT); profSaveT = setTimeout(() => { put('state', { key: 'profile', data: profile }); flashSaved(); }, 300); }
 const TEXT_FIELDS = ['handle', 'name', 'bio', 'link', 'posts', 'following', 'followers'];
 
 /* normalise avatar/cover to {src, panX, panY, z} — handles old string-only format */
@@ -1772,7 +2010,12 @@ function wireProfile() {
   });
   $('avatarInput').addEventListener('change', e => {
     const file = e.target.files[0]; if (!file) return;
-    const r = new FileReader(); r.onload = ev => { profile.avatar = { src: ev.target.result, panX: 0, panY: 0, z: 1 }; applyProfile(); saveProfile(); };
+    // downscaled: it is only ever drawn in a small circle, and it travels inside
+    // the board JSON when syncing, where a full-size original would be dead weight
+    const r = new FileReader(); r.onload = async ev => {
+      const ds = await downscale(ev.target.result, PROFILE_IMG_MAX, file.type);
+      profile.avatar = { src: ds.src, panX: 0, panY: 0, z: 1 }; applyProfile(); saveProfile();
+    };
     r.readAsDataURL(file); $('avatarInput').value = '';
   });
   wireCircleCrop(avatarEl,
@@ -1791,9 +2034,10 @@ function wireProfile() {
   $('hlToggle').addEventListener('click', () => { profile.hlOpen = !profile.hlOpen; applyHighlights(); saveProfile(); });
   $('hlInput').addEventListener('change', e => {
     const file = e.target.files[0]; if (!file || !hlTarget) return;
-    const r = new FileReader(); r.onload = ev => {
+    const r = new FileReader(); r.onload = async ev => {
+      const ds = await downscale(ev.target.result, PROFILE_IMG_MAX, file.type);
       const h = profile.highlights.find(x => x.id === hlTarget);
-      if (h) { h.cover = { src: ev.target.result, panX: 0, panY: 0, z: 1 }; applyHighlights(); saveProfile(); }
+      if (h) { h.cover = { src: ds.src, panX: 0, panY: 0, z: 1 }; applyHighlights(); saveProfile(); }
       hlTarget = null;
     }; r.readAsDataURL(file); $('hlInput').value = '';
   });
@@ -1868,6 +2112,327 @@ function applyHighlights() {
 }
 async function loadProfile() { if (!ok) return; const p = (await all('state')).find(s => s.key === 'profile'); if (p && p.data) profile = Object.assign(profile, p.data); }
 
+/* ================= cross-device sync (opt-in) =================
+   mkgrid stays local-first: IndexedDB remains the source of truth and the UI never
+   waits on the network. Sync is a layer on top that only switches on once you create
+   a shared board. Until then nothing here touches the network at all.
+
+   A board is one secret link, `#b=<id>~<secret>`. The fragment is never sent to the
+   server, so the secret stays out of request logs; it is replayed to the API in the
+   x-board-secret header instead. */
+
+const SYNC_KEY = 'mkgrid_board';
+const PUSH_DEBOUNCE = 1500, POLL_MS = 20000;
+let board = null;            // { id, secret, rev }
+let applyingRemote = false;  // suppresses the push that our own render()/save() would trigger
+let pushT = null, pollT = null, pushInFlight = false, pendingPush = false;
+let conflictShown = false;
+/* The last board JSON we know the server holds. Applying a remote update makes our
+   local state identical to it, so the save() that follows serializes to the same
+   string and the push is skipped — without this, two devices echo each other's
+   updates back and forth until they collide and report a conflict that isn't one. */
+let lastSyncedJson = null;
+
+/* IndexedDB records keep `path` but nothing else we hang off the object at runtime. */
+const stripRuntime = a => ({ id: a.id, name: a.name, src: a.src, w: a.w, h: a.h, path: a.path || null });
+
+function setSync(state, text) {
+  const el = $('syncStatus'); if (!el) return;
+  el.className = 'sync ' + state;
+  el.querySelector('.txt').textContent = text;
+}
+
+function loadBoardRef() {
+  const m = (location.hash || '').match(/[#&]b=([A-Za-z0-9_-]{16,64})~([A-Za-z0-9_-]{16,64})/);
+  if (m) return { id: m[1], secret: m[2] };
+  try { const s = localStorage.getItem(SYNC_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function saveBoardRef() {
+  try {
+    if (board) localStorage.setItem(SYNC_KEY, JSON.stringify({ id: board.id, secret: board.secret }));
+    else localStorage.removeItem(SYNC_KEY);
+  } catch (_) {}
+}
+function boardUrl() {
+  return board ? location.origin + location.pathname + '#b=' + board.id + '~' + board.secret : '';
+}
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: Object.assign({ 'x-board-secret': board ? board.secret : '' },
+      body ? { 'content-type': 'application/json' } : {}),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let payload = null;
+  try { payload = await res.json(); } catch (_) {}
+  return { ok: res.ok, status: res.status, payload };
+}
+
+/* ---- what actually travels ----
+   Never any image bytes: photos live in their own blobs and are referenced by id.
+   Profile avatar/highlight covers stay inline, but they're downscaled on import. */
+function serializeBoard() {
+  return {
+    rows, RW, RH,
+    tiles,
+    profile,
+    assets: lib.map(a => ({ id: a.id, name: a.name, w: a.w, h: a.h, path: a.path || null })),
+  };
+}
+
+const dataUrlToBlob = src => fetch(src).then(r => r.blob());
+const blobToDataUrl = b => new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(b); });
+
+/* Pushes any photo the server doesn't have yet. Runs before a save so the board JSON
+   we write only ever references assets that are actually fetchable. */
+async function uploadPendingAssets() {
+  const todo = lib.filter(a => !a.path && a.src);
+  for (const a of todo) {
+    try {
+      const blob = await dataUrlToBlob(a.src);
+      const type = blob.type || 'image/jpeg';
+      const sign = await api('POST', '/api/upload-url?id=' + board.id,
+        { assetId: a.id, contentType: type, size: blob.size });
+      if (!sign.ok || !sign.payload || !sign.payload.url) continue;
+      const up = await fetch(sign.payload.url, { method: 'PUT', headers: { 'content-type': type }, body: blob });
+      if (!up.ok) continue;
+      a.path = sign.payload.path;
+      put('assets', stripRuntime(a));
+    } catch (_) { /* retried on the next push */ }
+  }
+}
+
+/* Pulls down any photo this device is missing, so a phone opening the link for the
+   first time fills in its own local cache and then works offline like any other device. */
+async function fetchMissingAssets(assets, urls) {
+  const have = new Set(lib.map(a => a.id));
+  const missing = (assets || []).filter(a => a && a.id && !have.has(a.id) && urls && urls[a.id]);
+  if (!missing.length) return 0;
+  let got = 0;
+  for (let i = 0; i < missing.length; i++) {
+    const meta = missing[i];
+    setSync('syncing', 'photos ' + (i + 1) + '/' + missing.length);
+    try {
+      const res = await fetch(urls[meta.id]);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      const asset = { id: meta.id, name: meta.name || 'photo', src: await blobToDataUrl(blob),
+        w: meta.w, h: meta.h, path: meta.path || null };
+      lib.push(asset); put('assets', stripRuntime(asset)); cacheDisplayBlob(asset.id, blob);
+      got++;
+    } catch (_) {}
+  }
+  return got;
+}
+
+async function applyRemote(data, urls) {
+  if (!data) return;
+  applyingRemote = true;
+  try {
+    await fetchMissingAssets(data.assets, urls);
+    // keep local `path` knowledge in sync so we don't re-upload what's already there
+    (data.assets || []).forEach(m => { const a = lib.find(x => x.id === m.id); if (a && m.path) a.path = m.path; });
+
+    if (data.RW && data.RH) {
+      RW = data.RW; RH = data.RH;
+      document.documentElement.style.setProperty('--ratio', RW + ' / ' + RH);
+    }
+    rows = data.rows || 3; total = rows * 3;
+    const ids = new Set(lib.map(x => x.id));
+    tiles = (data.tiles || []).map(t => (t && ids.has(t.imgId)) ? t : null);
+    while (tiles.length < total) tiles.push(null);
+    tiles.length = total;
+    if (data.profile) profile = Object.assign(profile, data.profile);
+
+    $('rowsSeg').querySelectorAll('button').forEach(b => b.classList.toggle('active', parseInt(b.dataset.rows) === rows));
+    $('ratioSeg').querySelectorAll('button').forEach(b => b.classList.toggle('active', parseInt(b.dataset.rw) === RW && parseInt(b.dataset.rh) === RH));
+
+    sel.clear(); active = null;
+    applyProfile(); render(); renderTray(); updateExportUI(); syncZoom();
+    // remote state becomes the new undo baseline rather than something you can undo "through"
+    hist = [snap()]; pos = 0; updateHistUI();
+    // record what the server holds before save() fires, so the resulting push is a no-op
+    lastSyncedJson = JSON.stringify(serializeBoard());
+    save(); saveProfile();
+  } finally {
+    applyingRemote = false;
+  }
+}
+
+function schedulePush() {
+  if (!board || applyingRemote) return;
+  clearTimeout(pushT);
+  pushT = setTimeout(pushNow, PUSH_DEBOUNCE);
+}
+
+async function pushNow() {
+  if (!board) return;
+  if (pushInFlight) { pendingPush = true; return; }
+  pushInFlight = true;
+  try {
+    await uploadPendingAssets();
+    const data = serializeBoard(), body = JSON.stringify(data);
+    if (body === lastSyncedJson) { setSync('synced', 'synced'); return; }   // nothing actually changed
+    setSync('syncing', 'saving…');
+    const res = await api('PUT', '/api/board?id=' + board.id, { data, rev: board.rev });
+    if (res.ok) {
+      board.rev = res.payload.rev;
+      lastSyncedJson = body;
+      setSync('synced', 'synced');
+    } else if (res.status === 409) {
+      showConflict();
+    } else if (res.status === 404) {
+      setSync('error', 'board not found');
+    } else {
+      setSync('error', 'save failed');
+    }
+  } catch (_) {
+    setSync('offline', 'offline');
+  } finally {
+    pushInFlight = false;
+    if (pendingPush) { pendingPush = false; schedulePush(); }
+  }
+}
+
+async function pullNow(force) {
+  if (!board || pushInFlight || conflictShown) return;
+  try {
+    const res = await api('GET', '/api/board?id=' + board.id);
+    if (!res.ok) {
+      setSync(res.status === 404 ? 'error' : 'offline', res.status === 404 ? 'board not found' : 'offline');
+      return;
+    }
+    const p = res.payload;
+    // rev only moves forward, so a newer rev means another device saved
+    if (force || board.rev == null || p.rev > board.rev) {
+      board.rev = p.rev;
+      if (p.data) await applyRemote(p.data, p.assetUrls);
+    }
+    setSync('synced', 'synced');
+  } catch (_) {
+    setSync('offline', 'offline');
+  }
+}
+
+/* ---- conflict ---- */
+function showConflict() {
+  conflictShown = true;
+  setSync('conflict', 'conflict');
+  $('conflictBar').classList.add('open');
+}
+function hideConflict() {
+  conflictShown = false;
+  $('conflictBar').classList.remove('open');
+}
+$('conflictReload').addEventListener('click', async () => { hideConflict(); await pullNow(true); });
+$('conflictKeep').addEventListener('click', async () => {
+  hideConflict();
+  // adopt the server's current revision, then write our version on top of it
+  const res = await api('GET', '/api/board?id=' + board.id);
+  if (res.ok) board.rev = res.payload.rev;
+  lastSyncedJson = null;   // this write must go through even if it matches our last push
+  await pushNow();
+});
+
+/* ---- polling ---- */
+function startPolling() {
+  clearInterval(pollT);
+  if (!board) return;
+  pollT = setInterval(() => { if (document.visibilityState === 'visible') pullNow(); }, POLL_MS);
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pullNow(); });
+window.addEventListener('online', () => { if (board) pullNow(); });
+
+/* Pasting a different board link into an already-open tab only changes the fragment,
+   which never reloads the page — so adopt the new board explicitly. */
+window.addEventListener('hashchange', () => {
+  const ref = loadBoardRef();
+  if (!ref || (board && ref.id === board.id && ref.secret === board.secret)) return;
+  hideConflict();
+  board = null; lastSyncedJson = null;
+  initSync();
+});
+
+/* ---- sync modal ---- */
+const syncModal = $('syncModal');
+function refreshSyncModal() {
+  const on = !!board;
+  $('syncOff').hidden = on; $('syncOn').hidden = !on;
+  if (on) {
+    $('syncUrl').value = boardUrl();
+    $('syncMeta').textContent = 'Board ' + board.id.slice(0, 6) + '… · ' +
+      lib.filter(a => a.path).length + ' of ' + lib.length + ' photos uploaded';
+    $('syncShare').hidden = !navigator.share;
+  }
+}
+function openSync() { refreshSyncModal(); syncModal.classList.add('open'); }
+function closeSync() { syncModal.classList.remove('open'); }
+
+$('syncBtn').addEventListener('click', openSync);
+$('syncCancel').addEventListener('click', closeSync);
+$('syncDone').addEventListener('click', closeSync);
+syncModal.addEventListener('click', e => { if (e.target === syncModal) closeSync(); });
+syncModal.addEventListener('keydown', e => { if (e.key === 'Escape') closeSync(); });
+
+$('syncCreate').addEventListener('click', async () => {
+  const btn = $('syncCreate'); btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const res = await fetch('/api/board', { method: 'POST' });
+    const p = await res.json();
+    if (!res.ok || !p.id) throw new Error('create failed');
+    board = { id: p.id, secret: p.secret, rev: p.rev };
+    saveBoardRef();
+    history.replaceState(null, '', '#b=' + board.id + '~' + board.secret);
+    await pushNow();
+    startPolling();
+    refreshSyncModal();
+  } catch (_) {
+    alert('Could not create a shared board. This needs the deployed site — it does not work from a local file.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create shared board';
+  }
+});
+
+$('syncCopy').addEventListener('click', async () => {
+  const btn = $('syncCopy');
+  try { await navigator.clipboard.writeText(boardUrl()); }
+  catch (_) { $('syncUrl').select(); document.execCommand('copy'); }
+  btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy'; }, 1400);
+});
+$('syncShare').addEventListener('click', () => {
+  if (navigator.share) navigator.share({ title: 'mkgrid board', url: boardUrl() }).catch(() => {});
+});
+$('syncDetach').addEventListener('click', () => {
+  if (!confirm('Stop syncing on this device?\n\nYour grid stays here, and the board stays online — the link keeps working on your other devices.')) return;
+  board = null; saveBoardRef(); clearInterval(pollT);
+  history.replaceState(null, '', location.pathname);
+  setSync('off', 'local only');
+  refreshSyncModal(); closeSync();
+});
+$('syncRotate').addEventListener('click', async () => {
+  if (!confirm('Rotate the secret?\n\nThe current link stops working everywhere, including your other devices. You will need to open the new link on each of them again.')) return;
+  const res = await api('PATCH', '/api/board?id=' + board.id);
+  if (!res.ok) { alert('Could not rotate the secret.'); return; }
+  board.secret = res.payload.secret; board.rev = res.payload.rev;
+  saveBoardRef();
+  history.replaceState(null, '', '#b=' + board.id + '~' + board.secret);
+  refreshSyncModal();
+});
+
+async function initSync() {
+  const ref = loadBoardRef();
+  if (!ref) { setSync('off', 'local only'); return; }
+  board = { id: ref.id, secret: ref.secret, rev: null };
+  saveBoardRef();
+  history.replaceState(null, '', '#b=' + board.id + '~' + board.secret);
+  setSync('syncing', 'connecting…');
+  await pullNow(true);
+  // a device that already had local work keeps it — push it up after adopting the board
+  if (board && board.rev != null) schedulePush();
+  startPolling();
+}
+
 /* ---------- init ---------- */
 (async function () {
   db = await openDB(); ok = !!db;
@@ -1883,6 +2448,7 @@ async function loadProfile() { if (!ok) return; const p = (await all('state')).f
   render(); renderTray(); updateExportUI(); syncZoom();
   hist = []; pos = -1; commit();
   requestAnimationFrame(render);   // correct sizing once the stage has real dimensions
+  initSync();                      // no-op unless a board link is already in play
 })();
 </script>
 </body>

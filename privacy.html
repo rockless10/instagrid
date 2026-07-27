@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>mkgrid — privacy policy</title>
-<meta name="description" content="mkgrid's privacy policy. Your photos never leave your device. No upload, no account, no cookies, no analytics, no tracking. Private by default.">
+<meta name="description" content="mkgrid's privacy policy. Local by default — your photos stay on your device unless you opt into secret-link sync. No account, no cookies, no analytics, no tracking.">
 <meta name="author" content="Chris Vrakas">
 <meta name="theme-color" content="#0b0b0c">
-<link rel="canonical" href="https://mkgrid.app/privacy.html">
+<link rel="canonical" href="https://mkgrid.vercel.app/privacy.html">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="icon" type="image/x-icon" href="favicon.ico">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
@@ -51,13 +51,25 @@
  </div>
  <div class="wrap">
    <h1>privacy <span class="r">::</span> policy</h1>
-   <p class="manifesto">Your photos never leave your device. Full stop.</p>
-   <p class="lead">Most tools that touch your images upload them to a server first. mkgrid doesn't — and it never has to. Everything happens inside your browser, on your machine. There is no server that receives your photos, because there is no server at all. This isn't a promise to behave; it's how the thing is built.</p>
+   <p class="manifesto">Your photos stay on your device — unless you ask them not to.</p>
+   <p class="lead">Most tools that touch your images upload them to a server before you’ve done anything. mkgrid doesn’t. Everything — importing, cropping, arranging, captioning, exporting — happens inside your browser, on your machine, and nothing is transmitted anywhere. The single exception is <strong>shared boards</strong>: if you deliberately create one so you can carry a grid to your phone, your photos are uploaded to private storage. That is opt-in, it is off until you press the button, and this page tells you exactly what it does.</p>
 
    <div class="rule"></div>
 
-   <h2>LOCAL_ONLY</h2>
-   <p>Every action — importing, cropping, arranging, previewing, exporting — runs locally in your browser. <strong>No image is ever transmitted anywhere.</strong> mkgrid is a single static file with no backend, so there's nothing to upload to.</p>
+   <h2>LOCAL_BY_DEFAULT</h2>
+   <p>Every action — importing, cropping, arranging, captioning, previewing, exporting — runs locally in your browser. Until and unless you create a shared board, <strong>no image is ever transmitted anywhere</strong>.</p>
+
+   <h2>SHARED_BOARDS</h2>
+   <p>The SYNC button creates a board so the same grid opens on your other devices. Here is precisely what changes when you use it:</p>
+   <ul>
+     <li>Your photos are uploaded to a <strong>private</strong> object store and can only be read back through this site’s own API, using the board secret.</li>
+     <li>Your layout, captions and profile mockup are stored alongside them as a small JSON file.</li>
+     <li>The board is identified by a secret link. <strong>Anyone holding that link can read and edit the board</strong> — treat it like a password, and don’t post it anywhere public.</li>
+     <li>The secret lives in the URL fragment, which browsers never send to a server, so it stays out of access logs. It is stored only as a hash on our side.</li>
+     <li>If a link leaks, <em>Rotate secret</em> invalidates it everywhere. <em>Stop syncing here</em> detaches this device and leaves your local copy intact.</li>
+     <li>Your local copy always remains the working copy, so the app keeps working offline and a backend outage costs you nothing.</li>
+   </ul>
+   <p>No shared board is ever created for you automatically, and creating one does not add an account, a cookie, or any tracking.</p>
 
    <h2>NO_ACCOUNT</h2>
    <p>No signup. No login. No email required. Open the page and start planning. We never ask who you are because we never need to know.</p>
@@ -72,14 +84,15 @@
    <p>No external JavaScript, no tracking pixels, no social widgets phoning home. The entire tool is one file you can read top to bottom, fork, and self-host.</p>
 
    <h2>LOCAL_STORAGE</h2>
-   <p>So your work is still there when you come back, mkgrid saves it in your browser's local storage (IndexedDB). It lives <strong>on your device</strong>, never on a server. Clear your browser data and it's gone — and we couldn't see it in the first place.</p>
+   <p>So your work is still there when you come back, mkgrid saves it in your browser's local storage (IndexedDB). It lives <strong>on your device</strong>. Clear your browser data and it's gone. If you've created a shared board, a copy also lives in your private storage until you delete it there.</p>
 
    <h2>SERVER_LOGS</h2>
-   <p>The site is static, hosted on <strong>GitHub Pages</strong> behind <strong>Cloudflare</strong> (DNS/CDN). Cloudflare keeps basic access logs (IP, timestamp, page, user agent) for security and DDoS protection, purged automatically after ~72 hours. We don't analyze them unless investigating an attack. GitHub Pages may keep internal logs we can't control. mkgrid itself records nothing.</p>
+   <p>The site is hosted on <strong>Vercel</strong>, which keeps basic access logs (IP, timestamp, path, user agent) for security and operations. Board secrets never appear in those logs: they travel in the URL fragment, which browsers do not transmit, and in a request header rather than a query string. mkgrid itself records nothing about you.</p>
 
    <h2>WHAT_WE_DONT_DO</h2>
    <ul>
-     <li>Upload, store, or see your photos</li>
+     <li>Upload your photos anywhere unless you create a shared board</li>
+     <li>Look at the contents of a shared board</li>
      <li>Sell or share your data</li>
      <li>Show you ads or retarget you</li>
      <li>Build behavioral profiles</li>
@@ -91,26 +104,26 @@
    <p>We link out to GitHub, Instagram, and chrisvrakas.com. Once you click, you're under their privacy policies, not ours. We can't control what they do.</p>
 
    <h2>YOUR_RIGHTS</h2>
-   <p>Under GDPR, CCPA, and basic decency you have the right to know what data we hold, to delete it, and to take a copy. The short version: <strong>you're opted out by default, because we collect nothing to begin with.</strong> There's nothing on our end to hand over or erase.</p>
+   <p>Under GDPR, CCPA, and basic decency you have the right to know what data we hold, to delete it, and to take a copy. The short version: <strong>you're opted out by default, because we collect nothing to begin with.</strong> If you created a shared board, the only data held is the content you put in it, reachable solely through your own secret link.</p>
 
    <h2>ENCRYPTION</h2>
    <p>Served over HTTPS (TLS). Your connection is encrypted. For maximum privacy, consider Tor Browser or a VPN — if Cloudflare never sees your real IP, neither does anyone else.</p>
 
    <h2>LEGAL_REQUESTS</h2>
-   <p>We may be legally required to comply with valid requests from authorities. But we can't share what we don't have — and we intentionally collect nothing about you or your images.</p>
+   <p>We may be legally required to comply with valid requests from authorities. We collect nothing about you, so for local-only use there is nothing to hand over. Shared-board content is the one exception, and it exists only because you chose to create one.</p>
 
    <div class="box">
      <div class="k">PHILOSOPHY</div>
-     <p>Privacy is a fundamental right — it isn't about having something to hide, it's about having everything to protect. The lie the internet sold you is that privacy costs convenience. mkgrid is the counter-evidence: <strong>no account, no upload, no waiting</strong> — and it's faster and easier than the alternatives, not in spite of being private but because of it. If more tools worked this way, the web would be a better place.</p>
+     <p>Privacy is a fundamental right — it isn't about having something to hide, it's about having everything to protect. The lie the internet sold you is that privacy costs convenience. mkgrid is the counter-evidence: <strong>no account, nothing uploaded by default, no waiting</strong> — and it's faster and easier than the alternatives, not in spite of being private but because of it. If more tools worked this way, the web would be a better place.</p>
    </div>
 
    <h2>CONTACT</h2>
    <p><a href="mailto:connect@chrisvrakas.com">connect@chrisvrakas.com</a> · <a href="https://github.com/chrisvrakas/mkgrid" target="_blank" rel="noopener">github.com/chrisvrakas/mkgrid</a></p>
 
-   <p class="updated">LAST_UPDATED: June 2026 · VERSION 1.0</p>
+   <p class="updated">LAST_UPDATED: July 2026 · VERSION 1.1</p>
  </div>
  <footer>
-   <div class="punch">▸ private by default · no signup · zero tracking · no analytics · open-source</div>
+   <div class="punch">▸ local by default · no signup · zero tracking · no analytics · open-source</div>
    <div>designed by <a href="https://chrisvrakas.com" target="_blank" rel="noopener">chris vrakas</a> · © mkgrid.app</div>
    <div><a href="https://github.com/chrisvrakas/mkgrid" target="_blank" rel="noopener">source ↗</a> · <a href="https://instagram.com/mkgrid.app" target="_blank" rel="noopener">@mkgrid.app</a> · <a href="index.html">mkgrid.app</a></div>
  </footer>

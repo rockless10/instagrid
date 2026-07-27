@@ -1,17 +1,20 @@
 # mkgrid
 
-> **An Instagram Grid Planner That Never Phones Home**
+> **An Instagram Grid Planner That Stays On Your Machine**
 > *Don't post it before you mock it. YOUR feed. YOUR pixels. YOUR machine.*
+
+> **This is a fork** of [chrisvrakas/mkgrid](https://github.com/chrisvrakas/mkgrid) (MIT), with two additions:
+> per-post **captions** and opt-in **cross-device sync**. Everything else is Chris Vrakas's work.
 
 <div align="center"><img src="assets/images/mkgrid-banner.png" alt="mkgrid — make grid" width="100%"></div>
 
 ---
 
-mkgrid is a single-file, browser-based tool for planning your Instagram grid *before* you post. Drag in your photos, arrange the feed, crop every tile, span an image across a whole row, rearrange rows, preview the whole profile, and export post-ready images — or the entire feed as one picture. Nothing uploads to servers. Nothing tracks you. Nothing leaves your machine.
+mkgrid is a browser-based tool for planning your Instagram grid *before* you post. Drag in your photos, arrange the feed, crop every tile, span an image across a whole row, rearrange rows, write the caption for each post, preview the whole profile, and export post-ready images — or the entire feed as one picture. Nothing tracks you, and by default nothing leaves your machine.
 
 Built for people who want to plan a beautiful feed without handing unreleased work to big-tech surveillance capitalism 
 
-> The privacy isn't a setting you toggle. It's the architecture. There is no backend to leak to. → **[privacy.html](https://mkgrid.app/privacy.html)**
+> Local is the default, not a setting you have to find. The one thing that leaves your device is a **shared board**, and only when you press the button that creates one. → **[privacy.html](privacy.html)**
 
 ## Quick Links
 
@@ -46,7 +49,7 @@ It's `mkdir` for your feed: **make grid**.
 
 **Step 1** — Open **[mkgrid.app](https://mkgrid.app)** in any modern browser (desktop or mobile).
 
-**Step 2** — Drag your photos onto the grid, or click to pick them. They load instantly — and never leave your device.
+**Step 2** — Drag your photos onto the grid, or click to pick them. They load instantly — and stay on your device.
 
 **Step 3** — Arrange and crop:
 - Drag a tile's grip to reorder
@@ -87,8 +90,14 @@ Avatar, handle, name, bio, link, stats, and highlights — all editable, so you 
 ### Two Exports, One Button
 Individual post-ready images bundled to a single **ZIP**, or the **entire feed as one image** to hand a client or save for reference. Optional posting-order overlay numbers each tile.
 
-### Local-Only Persistence
-Your work auto-saves to **IndexedDB** — in your browser, on your device, never a server — and is restored on reload. Degrades gracefully to memory-only where storage is blocked.
+### Captions *(fork addition)*
+Click the **✎** on any tile to write that post's caption in a popup, with live counts against Instagram's 2,200-character and 30-hashtag limits. Captions belong to the grid slot, so they travel with a tile when you rearrange the feed and survive swapping a different photo in. Tiles that have one show a small badge. Exporting a ZIP adds a `captions.txt` numbered to match the image files.
+
+### Cross-Device Sync *(fork addition, opt-in)*
+Press **⇅ SYNC** to create a shared board. You get one secret link; open it on your phone and you have the same grid, with edits flowing both ways. Local storage stays the working copy, so the app is instant and keeps working offline, syncing when it reconnects. Simultaneous edits are caught by an ETag check and surface as a *keep mine / load theirs* prompt rather than silently overwriting. This is the only feature that uploads anything — see [Privacy](#privacy).
+
+### Local-First Persistence
+Your work auto-saves to **IndexedDB** — in your browser, on your device — and is restored on reload. Degrades gracefully to memory-only where storage is blocked.
 
 ### Plus
 Undo / redo with keyboard shortcuts, downscale-on-import to keep things fast, and a fully responsive layout that works on desktop and mobile.
@@ -123,15 +132,22 @@ mkgrid follows a strict set of principles:
 
 ## Privacy
 
-Every action — importing, cropping, arranging, previewing, exporting — runs locally in your browser. **No image is ever transmitted anywhere.** No account, no cookies, no analytics, no third-party scripts. Your work saves to IndexedDB on your device.
+Every action — importing, cropping, arranging, captioning, previewing, exporting — runs locally in your browser. No account, no cookies, no analytics, no third-party scripts. Your work saves to IndexedDB on your device.
 
-The site itself is a static file hosted on GitHub Pages behind Cloudflare, which keeps standard access logs (IP, timestamp) for security — purged automatically. mkgrid itself records nothing.
+**The one exception is a shared board.** If you press ⇅ SYNC and create one, your photos are uploaded to a private Vercel Blob store, readable only through this site's own API with the board secret. Some honest caveats:
+
+- **Anyone with the link can read and edit the board.** It is a credential, not just a URL — don't post it publicly. *Rotate secret* invalidates a leaked link everywhere.
+- The secret lives in the URL **fragment**, which browsers never transmit, so it stays out of server access logs. Only its SHA-256 is stored.
+- Lose the link and you can't reach the board from a *new* device; devices already syncing keep their local copy.
+- Your local copy is always authoritative, so a backend outage degrades to the original local-only app instead of losing work.
+
+Nothing above happens until you deliberately create a board. The site is hosted on Vercel, which keeps standard access logs (IP, timestamp) for security. mkgrid itself records nothing.
 
 > *"Privacy is not secrecy. A private matter is something one doesn't want the whole world to know, but a secret matter is something one doesn't want anybody to know. Privacy is the power to selectively reveal oneself to the world."* — Eric Hughes, *A Cypherpunk's Manifesto*
 
 That's exactly what planning a feed is: deciding, in private, what you'll reveal in public.
 
-**[→ Full privacy policy](https://mkgrid.app/privacy.html)**
+**[→ Full privacy policy](privacy.html)**
 
 ---
 
@@ -197,9 +213,9 @@ Open source under the [MIT License](LICENSE) — fork it, modify it, learn from 
 
 ## ⚡ Fast Facts
 
-- **Zero install** — no npm, no build step, no dependencies. One HTML file.
 - **Zero tracking** — no analytics, no cookies, no fingerprinting, no phoning home
-- **Zero upload** — your photos never leave the browser. There's no server to send them to.
+- **Zero accounts** — no signup, no login, no email, ever
+- **No upload by default** — your photos stay in the browser unless you create a shared board
 - **Zero trust** — in subscription creator-tools, in surveillance capitalism, in the idea that planning a grid should cost you your data
 - **100% HTML/CSS/JS** — readable, auditable, forkable, yours
 - **Shows its work** — open the source or the Network tab. Nothing is hidden, because nothing is happening behind your back.
