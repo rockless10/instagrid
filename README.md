@@ -10,7 +10,7 @@
 
 ---
 
-instagrid is a browser-based tool for planning your Instagram grid *before* you post. Drag in your photos, arrange the feed, crop every tile, span an image across a whole row, rearrange rows, write the caption for each post, preview the whole profile, and export post-ready images — or the entire feed as one picture. Nothing tracks you, and by default nothing leaves your machine.
+instagrid is a browser-based tool for planning your Instagram grid *before* you post. Drop in your photos, arrange the feed, crop every tile, insert and rearrange rows, write the caption for each post, preview the whole profile, and export post-ready images — or the entire feed as one picture. Nothing tracks you, and by default nothing leaves your machine.
 
 Built for people who want to plan a beautiful feed without handing unreleased work to big-tech surveillance capitalism 
 
@@ -31,7 +31,7 @@ Built for people who want to plan a beautiful feed without handing unreleased wo
 
 ## Why This Exists
 
-Your Instagram grid is a first impression you only get to make once. The order of your posts, the color story across rows, a panorama sliced across three tiles — the grid is a composition, and once a post is up, re-sequencing it means deleting and re-uploading.
+Your Instagram grid is a first impression you only get to make once. The order of your posts, the color story across rows, what sits next to what — the grid is a composition, and once a post is up, re-sequencing it means deleting and re-uploading.
 
 So people rehearse. The problem is *how*. Every existing grid planner wants you to create an account, upload your unreleased photos to their servers, and pay a monthly subscription to unlock basic features — all to preview a layout. You hand over your content and your data to plan a grid.
 
@@ -49,12 +49,12 @@ It's `mkdir` for your feed: **make grid**.
 
 **Step 1** — Open **[instagrid-app.vercel.app](https://instagrid-app.vercel.app)** in any modern browser (desktop or mobile).
 
-**Step 2** — Drag your photos onto the grid, or click to pick them. They load instantly — and stay on your device.
+**Step 2** — Drop your photos anywhere on the page, or click the box to pick them. Drop straight onto a tile to fill that tile. They load instantly — and stay on your device.
 
 **Step 3** — Arrange and crop:
 - Drag a tile's grip to reorder
 - Drag inside a tile to pan the crop; scroll or pinch to zoom
-- Tap **SPAN** on a row to stretch one image across all three tiles
+- Hit **⬇** beside a row to open an empty row there, pushing that row and everything below it down
 
 **Step 4** — Hit **EXPORT** for post-ready images (zipped), or the whole feed as a single picture.
 
@@ -81,8 +81,11 @@ Instagram switched grid thumbnails to a 3:4 vertical crop in early 2025. instagr
 ### Drag, Arrange & Crop
 Pointer-driven reordering with per-tile pan and continuous zoom — from whole-image (letterboxed) through fill, all the way to 5×. Every tile gets the exact crop you want. Works identically with mouse and touch.
 
-### SPAN — One Image Across a Row
-Stretch a single image seamlessly across all three tiles of a row for hero shots and panoramas. Pan and zoom the whole banner as one unit. This is the move no 1:1 planner can make.
+### A Grid That Grows With You
+No fixed 3×3 / 3×6 / 3×9 choice: the grid always keeps an empty row at the bottom and adds another the moment you fill it. Hit **⬇** beside any row to open an empty row right there, pushing that row and everything under it down — which is what actually happens on Instagram when you post. **✕** takes a row back out.
+
+### Fresh and Used
+The photo tray splits into two drawers: **Fresh** for what's still waiting, **Used** for what's already in the grid. Import forty photos and you can still see what's left to place.
 
 ### Editable Profile Mockup
 Avatar, handle, name, bio, link, stats, and highlights — all editable, so you preview the *whole profile*, not just a grid of tiles. See exactly what a visitor sees.
@@ -91,7 +94,7 @@ Avatar, handle, name, bio, link, stats, and highlights — all editable, so you 
 Individual post-ready images bundled to a single **ZIP**, or the **entire feed as one image** to hand a client or save for reference. Optional posting-order overlay numbers each tile.
 
 ### Captions *(fork addition)*
-Click the **✎** on any tile to write that post's caption in a popup, with live counts against Instagram's 2,200-character and 30-hashtag limits. Captions belong to the grid slot, so they travel with a tile when you rearrange the feed and survive swapping a different photo in. Tiles that have one show a small badge. Exporting a ZIP adds a `captions.txt` numbered to match the image files.
+Click the **✎** on any tile to write that post's caption in a popup, with live counts against Instagram's 2,200-character and 30-hashtag limits. Captions belong to the grid slot, so they travel with a tile when you rearrange the feed and survive swapping a different photo in. Tiles that have one show a small badge. The editor also has **Copy caption** and **Download photo**, so you can post one tile without a detour through EXPORT — and exporting a ZIP adds a `captions.txt` numbered to match the image files.
 
 ### Cross-Device Sync *(fork addition, opt-in)*
 Press **⇅ SYNC** to create a shared board. You get one secret link; open it on your phone and you have the same grid, with edits flowing both ways. Local storage stays the working copy, so the app is instant and keeps working offline, syncing when it reconnects. Simultaneous edits are caught by an ETag check and surface as a *keep mine / load theirs* prompt rather than silently overwriting. This is the only feature that uploads anything — see [Privacy](#privacy).
@@ -108,7 +111,7 @@ Undo / redo with keyboard shortcuts, downscale-on-import to keep things fast, an
 
 ## The Grid Is the Ad
 
-Here's the trick the subscription apps can't do as cleanly: **plan one image spanned across three tiles, export the whole feed, and post it row by row.** Your profile grid becomes a single composition — a panorama, a manifesto, a billboard — assembled from individual posts that only line up because you planned them in advance.
+Here's the trick the subscription apps can't do as cleanly: **plan the whole grid as one composition, export it, and post it row by row.** Your profile becomes a single image — a manifesto, a billboard — assembled from individual posts that only line up because you planned them in advance.
 
 The feed *is* the marketing. instagrid is how you build it.
 

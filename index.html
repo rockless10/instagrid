@@ -54,7 +54,7 @@
   "featureList": [
     "Plan your Instagram grid in a true 3:4 layout",
     "Drag to reorder, pan and zoom to crop every tile",
-    "Span one image across a full row (banner / panorama)",
+    "Insert rows anywhere to push posts down as you plan",
     "Editable profile mockup — avatar, bio, stats, highlights",
     "Write and store a caption for every planned post",
     "Export post-ready images or the whole feed as one image",
@@ -78,7 +78,9 @@
     --focus: #4a9eff;
     --gap: 2px;
     --ratio: 3 / 4;
-    --header-h: 56px;
+    --header-min: 56px;     /* the header's own floor */
+    --header-h: 56px;       /* its measured height — read only by things that sit under it */
+    --statusbar-h: 30px;
     --maxw: 1560px;
     --gutter: max(32px, calc((100vw - var(--maxw)) / 2));
   }
@@ -89,12 +91,18 @@
     background: var(--bg); color: var(--text);
     font-family: 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
     font-size: 13px; overflow-x: hidden;
+    /* the pinned status bar floats over the page — keep the credits footer clear of it */
+    padding-bottom: var(--statusbar-h);
   }
-  .app { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+  /* the workspace lives in the band between the two pinned bars */
+  .app { display: flex; flex-direction: column; height: calc(100dvh - var(--header-h) - var(--statusbar-h)); overflow: hidden; margin-top: var(--header-h); }
 
-  /* header */
+  /* header — pinned, overlays the page while you scroll */
   .header {
-    min-height: var(--header-h); background: var(--surface);
+    position: fixed; top: 0; left: 0; right: 0; z-index: 500;
+    /* deliberately NOT --header-h: that one is measured from this element, and feeding it
+       back into its own min-height makes the header grow by its border on every cycle. */
+    min-height: var(--header-min); background: var(--surface);
     border-bottom: 1px solid var(--border);
     display: flex; align-items: center; justify-content: space-between;
     padding: 8px var(--gutter); gap: 10px; flex-wrap: wrap; flex-shrink: 0;
@@ -163,13 +171,30 @@
   .dropzone strong { color: var(--accent); display: block; font-size: 13px; letter-spacing: .3px; }
   .dropzone span { font-size: 10px; color: var(--text-dim); display: block; margin-top: 7px; }
 
-  .tray { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 7px; }
-  .tray-empty { color: #4a4a4d; text-align: center; padding: 20px 0; font-size: 11px; }
+  .tray { flex: 1; overflow-y: auto; padding: 4px 12px 12px; display: flex; flex-direction: column; }
+  .tray-empty { color: #4a4a4d; text-align: center; padding: 14px 0; font-size: 11px; }
+  /* FRESH / USED drawers — headers borrow the rail's category idiom so the two panes rhyme */
+  /* flex: none — the drawers must keep their natural height and let .tray scroll, or a long
+     FRESH list gets squashed and overlaps the USED header below it */
+  .drawer { display: flex; flex-direction: column; flex: none; }
+  .drawer-h { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; width: 100%;
+    background: var(--surface); border: none;
+    border-bottom: 1px solid var(--border); color: var(--accent); font: inherit; font-size: 10px;
+    letter-spacing: 2px; padding: 13px 2px 9px; cursor: pointer; text-align: left; }
+  .drawer-h::before { content: "\2212"; color: var(--accent); font-size: 13px; width: 10px; }
+  .drawer-h[aria-expanded="false"]::before { content: "+"; }
+  .drawer-h:hover { color: #ff5c52; }
+  .drawer-h .dw-name { flex: 1; }
+  .drawer-h .dw-n { color: var(--text-dim); letter-spacing: 0; }
+  .drawer-body { display: flex; flex-direction: column; gap: 7px; padding: 10px 0 4px; }
+  .drawer-body[hidden] { display: none; }
   .chip {
     background: var(--elevated); border-left: 3px solid var(--accent); border-radius: 0 5px 5px 0;
     display: flex; align-items: center; gap: 10px; padding: 7px 9px; cursor: grab; touch-action: none; user-select: none;
   }
   .chip.dragging { opacity: .3; }
+  .chip.used { opacity: .5; border-left-color: var(--faint); }
+  .chip.used:hover { opacity: .85; }
   .chip img { width: 42px; height: 42px; object-fit: cover; border-radius: 3px; flex-shrink: 0; pointer-events: none; background: #2a2a2c; }
   .chip .name { font-size: 11px; color: var(--text-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip .del { background: none; border: none; color: var(--text-dim); font-size: 15px; cursor: pointer; padding: 4px 6px; }
@@ -230,14 +255,20 @@
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap); background: var(--border-bright); }
   .grid-wrap { position: relative; display: flex; width: 100%; }
   .grid-wrap .grid { flex: 1; min-width: 0; }
-  .row-grips { display: flex; flex-direction: column; width: 20px; flex-shrink: 0; }
-  .row-grip { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 10px; cursor: grab; transition: color .15s; touch-action: none; user-select: none; }
+  /* left rail beside the grid: one lane per row — insert-above arrow, drag handle, delete */
+  .row-grips { display: flex; flex-direction: column; width: 28px; flex-shrink: 0; }
+  .row-lane { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 2px 0; }
+  .row-grip { display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 10px; cursor: grab; transition: color .15s; touch-action: none; user-select: none; }
   .row-grip:active { cursor: grabbing; }
   .row-grip:hover { color: var(--accent); }
   .row-grip.rg-active { color: var(--accent); }
-  .row-grip-btn { width: 22px; height: 22px; background: rgba(0,0,0,.5); border: 1px solid var(--border-bright); color: var(--text-dim); font: inherit; font-size: 11px; padding: 0; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+  .row-grip-btn { width: 22px; height: 22px; background: rgba(0,0,0,.5); border: 1px solid var(--border-bright); color: var(--text-dim); font: inherit; font-size: 11px; padding: 0; border-radius: 3px; cursor: pointer; display: flex; align-items: center; justify-content: center; touch-action: manipulation; flex-shrink: 0; }
   .row-grip-btn:hover, .row-grip-btn:active { border-color: var(--accent); color: #fff; }
   .row-grip-btn:disabled { opacity: .25; pointer-events: none; }
+  /* the insert arrow is the primary row action — heavier than the rest of the lane */
+  .row-ins { font-size: 14px; font-weight: 700; color: var(--accent); border-color: #6a2019; background: rgba(255,68,56,.1); }
+  .row-ins:hover { background: var(--accent); color: #000; border-color: var(--accent); }
+  .row-del:hover { border-color: #ff6b6b; color: #ff6b6b; }
   .row-ghost { position: fixed; pointer-events: none; z-index: 9999; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; opacity: .8; border: 1.5px solid var(--accent); border-radius: 3px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,.6); }
   .row-ghost-cell { aspect-ratio: var(--ratio); overflow: hidden; position: relative; background: var(--surface); }
   .row-ghost-cell img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -262,7 +293,6 @@
   .grip { position: absolute; top: 5px; left: 5px; width: 22px; height: 22px; padding: 0; border-radius: 3px; background: rgba(0,0,0,.8); border: 1px solid #8a6a00; display: none; align-items: center; justify-content: center; cursor: grab; z-index: 16; touch-action: none; }
   .grip svg { width: 8px; height: 8px; display: block; }
   .cell.has .grip { display: flex; }
-  .cell.banner .grip { display: none; }
   .grip:hover { border-color: #e0a020; color: #ffc24d; }
   .grip:active { cursor: grabbing; }
 
@@ -276,8 +306,6 @@
   .cell:hover .tools, .cell.active .tools { opacity: 1; }
   .tools button { background: rgba(0,0,0,.8); border: 1px solid var(--border-bright); color: #ddd; font: inherit; font-size: 9px; padding: 0 6px; height: 22px; border-radius: 3px; cursor: pointer; letter-spacing: .3px; white-space: nowrap; display: flex; align-items: center; justify-content: center; }
   .tools button:hover { border-color: var(--accent); color: #fff; }
-  .tools button.span-btn { border-color: #8a6a00; color: #e0a020; }
-  .tools button.span-btn:hover { border-color: #e0a020; color: #ffc24d; }
   .tools button.cap-btn { font-size: 11px; padding: 0 5px; }
   .tools button.cap-btn.on { border-color: var(--accent); color: var(--accent); }
 
@@ -301,8 +329,12 @@
 
   /* footer */
   /* footer — terminal status bar */
-  .footer { background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 0 var(--gutter); height: 30px; flex-shrink: 0; font-size: 11px; line-height: 1; white-space: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  .footer { position: fixed; bottom: 0; left: 0; right: 0; z-index: 500; background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 0 var(--gutter); height: var(--statusbar-h); flex-shrink: 0; font-size: 11px; line-height: 1; white-space: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
   .footer::-webkit-scrollbar { display: none; }
+  /* both pinned bars read as floating over the workspace rather than as solid bands */
+  @supports (backdrop-filter: blur(1px)) {
+    .header, .footer { background: rgba(22,22,23,.82); backdrop-filter: blur(10px); }
+  }
   .sb-zone { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .sb-chev { color: var(--accent); font-weight: 700; }
   .sb-brand { color: var(--text); }
@@ -366,6 +398,8 @@
   .cap-meta .over { color: #ff6b6b; }
   .cap-meta .warn { color: #e0a020; }
   .cap-tip { margin-left: auto; opacity: .7; }
+  .cap-actions-left { margin-right: auto; display: flex; gap: 10px; flex-wrap: wrap; }
+  .cap-actions-left .btn.done { border-color: var(--accent); color: var(--accent); }
   @media (max-width: 820px) { .cap-tip { display: none; } }   /* no ⌘ key on a phone */
 
   /* sync status in the footer bar */
@@ -402,6 +436,16 @@
   #exportProgFill { height: 100%; width: 0%; background: var(--accent); border-radius: 2px; transition: width .2s ease; }
   .exp-prog-label { font-size: 10px; color: var(--text-dim); text-align: center; letter-spacing: .5px; margin-bottom: 10px; }
 
+  /* full-window drop target. pointer-events:none is load-bearing — the drop handler uses
+     elementFromPoint to find the tile under the cursor, and this must not shadow it. */
+  #dropOverlay { position: fixed; inset: 0; z-index: 1500; display: none; align-items: center; justify-content: center;
+    pointer-events: none; background: rgba(11,11,12,.72); backdrop-filter: blur(2px); }
+  #dropOverlay.on { display: flex; }
+  #dropOverlay .do-card { border: 2px dashed var(--accent); border-radius: 12px; padding: 30px 44px; text-align: center;
+    background: rgba(22,22,23,.9); box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  #dropOverlay strong { display: block; color: var(--accent); font-size: 15px; letter-spacing: 3px; }
+  #dropOverlay span { display: block; margin-top: 9px; font-size: 11px; color: var(--text-dim); letter-spacing: .4px; }
+
   #ghost { position: fixed; pointer-events: none; z-index: 2000; width: 76px; aspect-ratio: var(--ratio); border-radius: 5px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.6); opacity: .92; display: none; background: #222; }
   #ghost img { width: 100%; height: 100%; object-fit: cover; }
   canvas { display: none; }
@@ -417,7 +461,7 @@
     .sb-mid { display: none; }
   }
   @media (max-width: 820px) {
-    .app { height: auto; min-height: 100dvh; }
+    .app { height: auto; min-height: calc(100dvh - var(--header-h) - var(--statusbar-h)); }
     :root { --gutter: 16px; }
     .shell { display: block; padding: 0; overflow: visible; }
     .main { flex-direction: column; overflow: visible; max-width: none; margin: 0; border: none; border-radius: 0; box-shadow: none; }
@@ -451,14 +495,16 @@
     .rail { order: 5; width: 100%; border-left: none; border-top: 1px solid var(--border); overflow: visible; padding: 20px 16px; }
     .site-footer { padding: 18px 16px 16px; }
     .exp-ios-hint { display: block; }
-    .row-grips { width: 22px; }
+    .row-grips { width: 26px; }
     .row-grip { font-size: 11px; }
     /* sidebar hidden — enable per-cell + picker for the full mobile breakpoint */
     .cell .plus { pointer-events: auto; cursor: pointer; }
     .cell.has .plus { pointer-events: none; }
   }
   @media (max-width: 680px) {
-    .row-grips { display: none; }
+    /* drag-to-reorder is a poor touch gesture — keep the lane for its tap buttons only */
+    .row-grip { display: none; }
+    .row-lane { gap: 4px; }
     .row-move { display: flex; }  /* show ↑↓ in tools on mobile */
     .row-move:disabled { opacity: .3; pointer-events: none; }
     .check { top: 4px; right: 4px; width: 30px; height: 30px; }
@@ -508,7 +554,7 @@
 <!-- crawlable content for search engines; visually hidden, does not affect the UI -->
 <div style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0">
   <h1>instagrid — a privacy-first Instagram grid planner</h1>
-  <p>instagrid is a free, open-source Instagram grid planner that runs entirely in your browser. Plan and preview your Instagram feed before you post: drag in your photos, arrange the grid, crop each tile with pan and zoom, and span a single image across a full row for panorama or banner posts. instagrid uses Instagram's real 3:4 thumbnail ratio, with 4:5 and 1:1 options for legacy content. Write and store the caption for each planned post, then export post-ready images as a ZIP — captions included as a text file — or export your entire profile as one image to preview the whole feed. Everything happens locally on your device by default: no account, no cookies, no analytics, and no tracking. If you want the same board on your phone, you can opt into secret-link sync, which is the only time anything is uploaded. instagrid is open source under the MIT license, and you can read, fork, and self-host it.</p>
+  <p>instagrid is a free, open-source Instagram grid planner that runs entirely in your browser. Plan and preview your Instagram feed before you post: drop in your photos anywhere on the page, arrange the grid, crop each tile with pan and zoom, and insert rows to push the whole plan down as new posts land on top. instagrid uses Instagram's real 3:4 thumbnail ratio, with 4:5 and 1:1 options for legacy content. Write and store the caption for each planned post, then export post-ready images as a ZIP — captions included as a text file — or export your entire profile as one image to preview the whole feed. Everything happens locally on your device by default: no account, no cookies, no analytics, and no tracking. If you want the same board on your phone, you can opt into secret-link sync, which is the only time anything is uploaded. instagrid is open source under the MIT license, and you can read, fork, and self-host it.</p>
   <h2>Free Instagram feed planner — no login, no upload</h2>
   <p>Plan your Instagram layout, preview your grid aesthetic, sequence upcoming posts, and design a puzzle or panorama feed. A privacy-first alternative to subscription grid-planning apps.</p>
 </div>
@@ -520,11 +566,6 @@
         <button data-rw="3" data-rh="4" class="active">3:4</button>
         <button data-rw="4" data-rh="5">4:5</button>
         <button data-rw="1" data-rh="1">1:1</button>
-      </div>
-      <div class="seg" id="rowsSeg">
-        <button data-rows="3" class="active">3×3</button>
-        <button data-rows="6">3×6</button>
-        <button data-rows="9">3×9</button>
       </div>
       <button id="undoBtn" class="btn btn-icon" title="Undo">↩</button>
       <button id="redoBtn" class="btn btn-icon" title="Redo">↪</button>
@@ -548,10 +589,23 @@
     <div class="sidebar">
       <div class="dropzone" id="dropzone">
         <strong>+ ADD PHOTOS</strong>
-        <span>tap or drag · kept on your device</span>
+        <span>tap, or drop anywhere · kept on your device</span>
         <input type="file" id="fileInput" multiple accept="image/*" hidden>
       </div>
-      <div class="tray" id="tray"><div class="tray-empty">no photos yet</div></div>
+      <div class="tray" id="tray">
+        <section class="drawer" id="drawerFresh">
+          <button class="drawer-h" type="button" aria-expanded="true" aria-controls="trayFresh">
+            <span class="dw-name">FRESH</span><span class="dw-n" id="freshN">0</span>
+          </button>
+          <div class="drawer-body" id="trayFresh"></div>
+        </section>
+        <section class="drawer" id="drawerUsed">
+          <button class="drawer-h" type="button" aria-expanded="true" aria-controls="trayUsed">
+            <span class="dw-name">USED</span><span class="dw-n" id="usedN">0</span>
+          </button>
+          <div class="drawer-body" id="trayUsed"></div>
+        </section>
+      </div>
     </div>
 
     <div class="stage">
@@ -609,17 +663,18 @@
       <div class="rail-block rail-help">
         <div class="rail-cat rail-cat-first">TIPS</div>
         <ul class="rail-tips">
+          <li><b>Add photos</b> — drop them anywhere on the page. Drop straight onto a tile to fill that tile.</li>
           <li><b>Rearrange</b> — grab a tile's ⠿ handle and drag it to a new spot.</li>
           <li><b>Reorder rows</b> — on desktop, grab the ⠿ handle on the left of any row and drag it up or down.</li>
+          <li><b>Make room</b> — hit <b>⬇</b> beside a row to open an empty row there, pushing that row and everything below it down. <b>✕</b> takes a row back out. The grid always keeps a spare row at the bottom.</li>
           <li><b>Reframe a photo</b> — drag inside it to move the crop; mouse wheel or pinch to zoom. On a trackpad, hold <b>Ctrl</b> while scrolling.</li>
           <li><b>Zoom on mobile</b> — tap a tile to select it, then pinch with two fingers directly on the tile.</li>
-          <li><b>Span a photo like a collage</b> — tap <b>SPAN</b> on a row to stretch one image across all three tiles.</li>
           <li><b>Keyboard shortcuts</b> — <b>Ctrl Z</b> / <b>Ctrl Y</b> to undo / redo. <b>Delete</b> removes selected tiles.</li>
           <li><b>Export your work</b> — hit <b>EXPORT</b> to save every tile as a ready-to-post image, or your whole feed as one picture.</li>
         </ul>
         <div class="rail-cat">FAQ</div>
         <details><summary>Do my photos stay private?</summary><p>By default, yes — instagrid runs in your browser, with no account and nothing uploaded. Your images stay on your device. The one exception is if you choose to create a shared board from the SYNC button: that uploads your photos to private storage so your other devices can load them, and anyone holding the board link can view and edit it. Until you do that, nothing leaves your device.</p></details>
-        <details><summary>How do captions work?</summary><p>Click the ✎ on any tile to write the caption for that post, with live counts against Instagram's 2,200-character and 30-hashtag limits. Captions are attached to the grid slot, so they travel with a tile when you rearrange the feed. Exporting a ZIP includes a <code>captions.txt</code> numbered to match the image files, ready to copy and paste when you post.</p></details>
+        <details><summary>How do captions work?</summary><p>Click the ✎ on any tile to write the caption for that post, with live counts against Instagram's 2,200-character and 30-hashtag limits. Captions are attached to the grid slot, so they travel with a tile when you rearrange the feed. The editor has <b>Copy caption</b> and <b>Download photo</b> buttons for posting one at a time, and exporting a ZIP includes a <code>captions.txt</code> numbered to match the image files.</p></details>
         <details><summary>Do I need an account?</summary><p>No signup, no login, no email. Open it and start planning.</p></details>
         <details><summary>Is it really free?</summary><p>Yes — free and open-source (MIT). No ads, no upsells, nothing behind a paywall.</p></details>
         <details><summary>Where is my work saved?</summary><p>Locally, in your browser — on your device, never a server. Clearing your browser data removes it.</p></details>
@@ -714,6 +769,10 @@
       <span class="cap-tip">⌘↵ to save</span>
     </div>
     <div class="actions">
+      <div class="cap-actions-left">
+        <button class="btn" id="capCopy">⧉ Copy caption</button>
+        <button class="btn" id="capDownload">↓ Download photo</button>
+      </div>
       <button class="btn" id="capCancel">Cancel</button>
       <button class="btn btn-accent" id="capSave">Save</button>
     </div>
@@ -762,6 +821,8 @@
   <button class="btn" id="conflictKeep">Keep mine</button>
 </div>
 
+<div id="dropOverlay" aria-hidden="true"><div class="do-card"><strong>DROP PHOTOS</strong><span>anywhere on this page · on a tile to fill it</span></div></div>
+
 <div id="ghost"><img alt=""></div>
 <canvas id="canvas"></canvas>
 
@@ -771,15 +832,26 @@ const $ = id => document.getElementById(id);
 
 /* ---------- state ---------- */
 let rows = 3, total = 9;
-let tiles = [];                 // null | { imgId, zoom, panX, panY, mode:'fill'|'fit' }
+let tiles = [];                 // null | { imgId, z, panX, panY, cap }
 let lib = [];                   // { id, name, src, w, h }
 let sel = new Set();
 let active = null;
 let RW = 3, RH = 4; const GAP = 2, ZMIN = 0, ZMAX = 5;
+const MIN_ROWS = 3, MAX_ROWS = 60;
 const PROFILE_IMG_MAX = 512;    // avatar + highlight covers are only ever drawn small
 let stageTile = 0;
 
-const grid = $('grid'), tray = $('tray'), fileInput = $('fileInput'), dropzone = $('dropzone');
+/* SPAN (a photo stretched across a whole row) is gone. Boards saved or synced while it
+   existed still carry `banner` slices, so every load path folds them back into three
+   ordinary tiles of the same photo — the closest thing to what was on screen. */
+function demoteBanner(t) {
+  if (!t || !t.banner) return t;
+  const out = { imgId: t.imgId, z: 1, panX: 0, panY: 0 };
+  if (t.cap) out.cap = t.cap;
+  return out;
+}
+
+const grid = $('grid'), fileInput = $('fileInput'), dropzone = $('dropzone');
 const zoomRange = $('zoomRange'), undoBtn = $('undoBtn'), redoBtn = $('redoBtn');
 const exportModal = $('exportModal'), preview = $('preview'), canvas = $('canvas');
 const ghost = $('ghost'), ghostImg = ghost.querySelector('img');
@@ -813,10 +885,12 @@ function flashSaved() { const el = $('saved'); el.style.opacity = '1'; clearTime
 
 /* ---------- history ---------- */
 let hist = [], pos = -1;
-function snap() { return tiles.map(t => t ? { ...t } : null); }
+// rows travels with the snapshot: inserting or deleting a row is undoable, and without it
+// `total` would drift out of step with tiles.length the moment you undo one.
+function snap() { return { rows, tiles: tiles.map(t => t ? { ...t } : null) }; }
 const HIST_LIMIT = 60;
 function commit() { hist = hist.slice(0, pos + 1); hist.push(snap()); if (hist.length > HIST_LIMIT) hist.shift(); pos = hist.length - 1; updateHistUI(); save(); }
-function restore(s) { tiles = s.map(t => t ? { ...t } : null); sel.clear(); active = null; render(); updateExportUI(); syncZoom(); }
+function restore(s) { rows = s.rows; total = rows * 3; tiles = s.tiles.map(t => t ? { ...t } : null); sel.clear(); active = null; render(); updateExportUI(); syncZoom(); }
 function undo() { if (pos > 0) { pos--; restore(hist[pos]); updateHistUI(); } }
 function redo() { if (pos < hist.length - 1) { pos++; restore(hist[pos]); updateHistUI(); } }
 function updateHistUI() { undoBtn.disabled = pos <= 0; redoBtn.disabled = pos >= hist.length - 1; }
@@ -825,29 +899,11 @@ let histT = null; const debHist = () => { clearTimeout(histT); histT = setTimeou
 /* ---------- geometry (proven WYSIWYG: same math for tile, preview, export) ---------- */
 function dims() { if (stageTile) return { w: stageTile, h: stageTile * RH / RW }; const w = grid.clientWidth; const tw = (w && w > 50) ? (w - 2 * GAP) / 3 : 130; return { w: tw, h: tw * RH / RW }; }
 function scaleFor(t, contain, cover) { const z = t.z == null ? 1 : t.z; return z <= 1 ? contain + (cover - contain) * z : cover * z; }
-function place(t, a, sw, sh, gap) {
-  if (t.banner) {
-    const g = gap == null ? GAP : gap;
-    const bw = 3 * sw + 2 * g, bz = t.bz == null ? 1 : t.bz;
-    const s = (bw / a.w) * bz, w = a.w * s, h = a.h * s;
-    const left = -(t.banner.col * (sw + g)) + (bw - w) / 2 + (t.panX || 0) * bw;
-    const top = (sh - h) / 2 + (t.panY || 0) * sh;
-    return { w, h, left, top };
-  }
+function place(t, a, sw, sh) {
   const contain = Math.min(sw / a.w, sh / a.h), cover = Math.max(sw / a.w, sh / a.h);
   const s = scaleFor(t, contain, cover), w = a.w * s, h = a.h * s;
   return { w, h, left: (sw - w) / 2 + t.panX * sw, top: (sh - h) / 2 + t.panY * sh };
 }
-/* banner transform is shared across its 3 slices */
-function clampBanner(t, a) {
-  const sw = 1, sh = RH / RW, bw = 3, bz = t.bz == null ? 1 : t.bz;
-  const s = (bw / a.w) * bz, w = a.w * s, h = a.h * s;
-  const exX = Math.max(0, (w - bw) / (2 * bw)), exY = Math.max(0, (h - sh) / (2 * sh));
-  t.panX = Math.min(exX, Math.max(-exX, t.panX || 0));
-  t.panY = Math.min(exY, Math.max(-exY, t.panY || 0));
-}
-function setBanner(row, patch) { const s = row * 3; for (let c = 0; c < 3; c++) { const t = tiles[s + c]; if (t && t.banner) { Object.assign(t, patch); const a = lib.find(x => x.id === t.imgId); if (a) clampBanner(t, a); } } }
-function refreshBannerRow(row) { const s = row * 3, d = dims(); for (let c = 0; c < 3; c++) { const cell = grid.children[s + c], t = tiles[s + c]; if (cell && t) { const a = lib.find(x => x.id === t.imgId), im = cell.querySelector('img'); if (a && im) applyImg(im, t, a, d); } } }
 function clampPan(t, a) {
   const sw = 1, sh = RH / RW;
   const contain = Math.min(sw / a.w, sh / a.h), cover = Math.max(sw / a.w, sh / a.h);
@@ -856,7 +912,7 @@ function clampPan(t, a) {
   t.panX = Math.min(ex, Math.max(-ex, t.panX));
   t.panY = Math.min(ey, Math.max(-ey, t.panY));
 }
-function applyImg(img, t, a, d) { const p = place(t, a, d.w, d.h, GAP); img.style.width = p.w + 'px'; img.style.height = p.h + 'px'; img.style.left = p.left + 'px'; img.style.top = p.top + 'px'; }
+function applyImg(img, t, a, d) { const p = place(t, a, d.w, d.h); img.style.width = p.w + 'px'; img.style.height = p.h + 'px'; img.style.left = p.left + 'px'; img.style.top = p.top + 'px'; }
 
 /* ---------- size the grid to fill the viewport — the grid is the product ---------- */
 function fitStage() {
@@ -872,6 +928,7 @@ function fitStage() {
 
 /* ---------- render ---------- */
 function render() {
+  ensureTrailingRow();
   fitStage();
   const d = dims();
   grid.innerHTML = '';
@@ -904,38 +961,18 @@ function render() {
       if (a) {
         cell.classList.add('has');
         setImgSrc(img, a); img.alt = a.name ? `Grid tile: ${a.name}` : 'Grid tile image'; applyImg(img, t, a, d); plus.style.display = 'none';
-        if (t.banner) {
-          cell.classList.add('banner');
-          const rm = mkBtn('✕', () => { removeBannerRow(t.banner.row); if (active != null && active >= t.banner.row * 3 && active < t.banner.row * 3 + 3) active = null; render(); updateExportUI(); syncZoom(); commit(); });
-          tools.append(rm);
-          if (i % 3 === 0) {
-            const row = Math.floor(i / 3);
-            // a banner row is one post, so its caption lives on the leftmost slice
-            tools.append(capBtn(i));
-            if (t.cap) cell.classList.add('has-cap');
-            const mu = mkBtn('↑', () => { swapRows(row, row - 1); }); mu.className = 'row-move'; mu.title = 'Move row up'; if (row === 0) mu.disabled = true;
-            const md = mkBtn('↓', () => { swapRows(row, row + 1); }); md.className = 'row-move'; md.title = 'Move row down'; if (row === rows - 1) md.disabled = true;
-            tools.append(mu, md);
-          }
-          check.addEventListener('click', e => { e.stopPropagation(); toggleSel(i); });
-        } else {
-          const rm = mkBtn('✕', () => { tiles[i] = null; sel.delete(i); if (active === i) active = null; render(); updateExportUI(); syncZoom(); commit(); });
-          tools.append(rm, capBtn(i));
-          if (t.cap) cell.classList.add('has-cap');
-          // row-move in tools for leftmost cells — mobile only (desktop uses grip column)
-          if (i % 3 === 0) {
-            const row = Math.floor(i / 3);
-            const mu = mkBtn('↑', () => { swapRows(row, row - 1); }); mu.className = 'row-move'; mu.title = 'Move row up'; if (row === 0) mu.disabled = true;
-            const md = mkBtn('↓', () => { swapRows(row, row + 1); }); md.className = 'row-move'; md.title = 'Move row down'; if (row === rows - 1) md.disabled = true;
-            tools.append(mu, md);
-          }
-          if (i % 3 === 0 && i + 2 < total) {
-            const sp = mkBtn('⟐ SPAN', () => spanRow(Math.floor(i / 3), t.imgId)); sp.classList.add('span-btn');
-            tools.append(sp);
-          }
-          check.addEventListener('click', e => { e.stopPropagation(); toggleSel(i); });
-          wireGrip(grip, i);
+        const rm = mkBtn('✕', () => { tiles[i] = null; sel.delete(i); if (active === i) active = null; render(); updateExportUI(); syncZoom(); commit(); });
+        tools.append(rm, capBtn(i));
+        if (t.cap) cell.classList.add('has-cap');
+        // row-move in tools for leftmost cells — mobile only (desktop uses grip column)
+        if (i % 3 === 0) {
+          const row = Math.floor(i / 3);
+          const mu = mkBtn('↑', () => { swapRows(row, row - 1); }); mu.className = 'row-move'; mu.title = 'Move row up'; if (row === 0) mu.disabled = true;
+          const md = mkBtn('↓', () => { swapRows(row, row + 1); }); md.className = 'row-move'; md.title = 'Move row down'; if (row === rows - 1) md.disabled = true;
+          tools.append(mu, md);
         }
+        check.addEventListener('click', e => { e.stopPropagation(); toggleSel(i); });
+        wireGrip(grip, i);
       } else { tiles[i] = null; img.style.display = 'none'; }
     } else { img.style.display = 'none'; }
 
@@ -945,6 +982,7 @@ function render() {
     grid.appendChild(cell);
   }
   renderRowGrips();
+  renderTray();   // FRESH/USED is derived from `tiles`, so it re-splits with every grid change
   // keep posts count in sync with filled tiles (only if user hasn't manually edited it)
   const postsEl = document.querySelector('[data-f="posts"]');
   if (postsEl && document.activeElement !== postsEl) postsEl.textContent = filled().length;
@@ -958,12 +996,7 @@ function swapRows(r1, r2) {
   const n = rows, c = 3;
   if (r1 < 0 || r2 < 0 || r1 >= n || r2 >= n || r1 === r2) return;
   for (let j = 0; j < c; j++) { const tmp = tiles[r1 * c + j]; tiles[r1 * c + j] = tiles[r2 * c + j]; tiles[r2 * c + j] = tmp; }
-  // Update banner.row references so normalizeBanners doesn't strip them
-  for (let j = 0; j < c; j++) {
-    if (tiles[r1 * c + j]?.banner) tiles[r1 * c + j] = { ...tiles[r1 * c + j], banner: { ...tiles[r1 * c + j].banner, row: r1 } };
-    if (tiles[r2 * c + j]?.banner) tiles[r2 * c + j] = { ...tiles[r2 * c + j], banner: { ...tiles[r2 * c + j].banner, row: r2 } };
-  }
-  normalizeBanners(); sel.clear(); active = null; render(); updateExportUI(); syncZoom(); commit();
+  sel.clear(); active = null; render(); updateExportUI(); syncZoom(); commit();
 }
 
 function buildRowGhost(r) {
@@ -1014,6 +1047,21 @@ function renderRowGrips() {
   const rg = document.getElementById('rowGrips'); if (!rg) return;
   rg.innerHTML = '';
   for (let r = 0; r < rows; r++) {
+    const lane = document.createElement('div'); lane.className = 'row-lane';
+
+    // push this row and everything under it down, opening an empty row here
+    const ins = document.createElement('button'); ins.className = 'row-grip-btn row-ins'; ins.textContent = '⬇';
+    ins.title = `Insert an empty row here — pushes row ${r + 1} and everything below it down`;
+    ins.setAttribute('aria-label', ins.title);
+    ins.disabled = rows >= MAX_ROWS;
+    ins.addEventListener('click', e => { e.stopPropagation(); insertRow(r); });
+
+    const rmv = document.createElement('button'); rmv.className = 'row-grip-btn row-del'; rmv.textContent = '✕';
+    rmv.title = `Delete row ${r + 1} — everything below moves up`;
+    rmv.setAttribute('aria-label', rmv.title);
+    rmv.disabled = rows <= MIN_ROWS;
+    rmv.addEventListener('click', e => { e.stopPropagation(); deleteRow(r); });
+
     const g = document.createElement('div'); g.className = 'row-grip'; g.textContent = '⠿'; g.dataset.r = r;
     g.setAttribute('role', 'button'); g.setAttribute('aria-label', `Drag to reorder row ${r + 1}`);
     g.addEventListener('pointerdown', e => {
@@ -1029,7 +1077,8 @@ function renderRowGrips() {
       document.body.style.overflow = 'hidden'; document.body.style.touchAction = 'none';
       try { g.setPointerCapture(e.pointerId); } catch (_) {}
     });
-    rg.appendChild(g);
+    lane.append(ins, g, rmv);
+    rg.appendChild(lane);
   }
 }
 // Row drag move + end on document — ensures drag completes even if pointer capture fails
@@ -1089,12 +1138,14 @@ function openCaption(i) {
   capTarget = i; capTrigger = document.activeElement;
   capText.value = t.cap || '';
   $('capSub').textContent = 'Tile ' + String(i + 1).padStart(2, '0') +
-    ' · row ' + (Math.floor(i / 3) + 1) + (t.banner ? ' (spanned row)' : ', column ' + (i % 3 + 1));
+    ' · row ' + (Math.floor(i / 3) + 1) + ', column ' + (i % 3 + 1);
   // thumbnail uses the same placement math as the grid, so the crop matches what you see
   const thumb = $('capThumb'), tim = thumb.querySelector('img'), a = lib.find(x => x.id === t.imgId);
   if (a) { setImgSrc(tim, a); applyImg(tim, t, a, { w: 66, h: 66 * RH / RW }); tim.style.display = ''; }
   else tim.style.display = 'none';
   updateCapMeta();
+  resetCapCopy();
+  $('capDownload').disabled = !a;
   captionModal.classList.add('open');
   capText.focus(); capText.setSelectionRange(capText.value.length, capText.value.length);
 }
@@ -1114,7 +1165,48 @@ function saveCaption() {
   render(); commit();
 }
 
-capText.addEventListener('input', updateCapMeta);
+/* Copy + download, so a finished post can leave the editor without a detour through EXPORT. */
+const CAP_COPY_LABEL = '⧉ Copy caption';
+function resetCapCopy() {
+  const b = $('capCopy');
+  clearTimeout(resetCapCopy._t);
+  b.textContent = CAP_COPY_LABEL; b.classList.remove('done');
+  b.disabled = !capText.value.trim();
+}
+async function copyCaption() {
+  const text = capText.value;
+  if (!text.trim()) return;
+  let done = false;
+  try { await navigator.clipboard.writeText(text); done = true; }
+  catch (_) {
+    // clipboard API needs a secure context — fall back for file:// and plain http
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(ta); ta.select();
+      done = document.execCommand('copy');
+      ta.remove();
+    } catch (_) {}
+  }
+  const b = $('capCopy');
+  b.textContent = done ? '✓ Copied' : '✕ Copy failed';
+  b.classList.toggle('done', done);
+  clearTimeout(resetCapCopy._t);
+  resetCapCopy._t = setTimeout(resetCapCopy, 1400);
+}
+async function downloadCaptionPhoto() {
+  if (capTarget == null) return;
+  const i = capTarget, b = $('capDownload');
+  b.disabled = true; b.textContent = 'Rendering…';
+  let blob = null;
+  try { blob = await renderTileBlob(i, 'png'); } catch (_) {}
+  b.textContent = '↓ Download photo'; b.disabled = false;
+  if (blob) dl(blob, `grid_${String(i + 1).padStart(2, '0')}.png`);
+}
+
+capText.addEventListener('input', () => { updateCapMeta(); resetCapCopy(); });
+$('capCopy').addEventListener('click', copyCaption);
+$('capDownload').addEventListener('click', downloadCaptionPhoto);
 $('capSave').addEventListener('click', saveCaption);
 $('capCancel').addEventListener('click', closeCaption);
 captionModal.addEventListener('click', e => { if (e.target === captionModal) closeCaption(); });
@@ -1159,14 +1251,6 @@ function wireCell(cell, i) {
     if (assignTarget >= 0) { exitAssign(); return; }
     const touch = e.pointerType !== 'mouse';
     g.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (t.banner) {
-      setActive(i);
-      if (g.pts.size === 2 && g.i === i) { const p = [...g.pts.values()]; g.mode = 'bpinch'; g.dist = distp(p[0], p[1]); g.z = t.bz == null ? 1 : t.bz; g.row = t.banner.row; try { cell.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); return; }
-      g.i = i;
-      if (!touch || active === i) { g.mode = 'bpan'; g.pX = t.panX || 0; g.pY = t.panY || 0; g.sx = e.clientX; g.sy = e.clientY; g.moved = false; g.row = t.banner.row; try { cell.setPointerCapture(e.pointerId); } catch (_) {} }
-      else g.mode = 'tap';
-      return;
-    }
     if (g.pts.size === 2 && g.i === i) {
       const p = [...g.pts.values()]; g.mode = 'pinch'; g.dist = distp(p[0], p[1]); g.z = t.z == null ? 1 : t.z;
       try { cell.setPointerCapture(e.pointerId); } catch (_) {} e.preventDefault(); return;
@@ -1179,14 +1263,7 @@ function wireCell(cell, i) {
     if (g.i !== i) return;
     if (g.pts.has(e.pointerId)) g.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const t = tiles[i]; if (!t) return; const a = lib.find(x => x.id === t.imgId); if (!a) return; const d = dims();
-    if (g.mode === 'bpinch' && g.pts.size >= 2) {
-      const p = [...g.pts.values()]; const bz = clamp(g.z * distp(p[0], p[1]) / (g.dist || 1), 1, ZMAX);
-      setBanner(g.row, { bz }); refreshBannerRow(g.row); syncZoom(); e.preventDefault();
-    } else if (g.mode === 'bpan') {
-      const bwpx = 3 * d.w + 2 * GAP, dx = e.clientX - g.sx, dy = e.clientY - g.sy;
-      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) g.moved = true;
-      setBanner(g.row, { panX: g.pX + dx / bwpx, panY: g.pY + dy / d.h }); refreshBannerRow(g.row); e.preventDefault();
-    } else if (g.mode === 'pinch' && g.pts.size >= 2) {
+    if (g.mode === 'pinch' && g.pts.size >= 2) {
       const p = [...g.pts.values()]; t.z = clamp(g.z * distp(p[0], p[1]) / (g.dist || 1), ZMIN, ZMAX);
       clampPan(t, a); const im = cell.querySelector('img'); if (im) applyImg(im, t, a, d); syncZoom(); e.preventDefault();
     } else if (g.mode === 'pan') {
@@ -1199,7 +1276,7 @@ function wireCell(cell, i) {
   const end = e => {
     if (g.i !== i) return;
     g.pts.delete(e.pointerId);
-    if ((g.mode === 'pan' || g.mode === 'bpan') && g.moved) commit();
+    if (g.mode === 'pan' && g.moved) commit();
     if (g.pts.size === 0) { g.mode = null; g.i = null; }
     else if (g.mode === 'pinch' && g.pts.size < 2) { commit(); const p = [...g.pts.values()][0]; g.mode = 'pan'; g.sx = p.x; g.sy = p.y; const t = tiles[i]; if (t) { g.pX = t.panX; g.pY = t.panY; } }
   };
@@ -1214,7 +1291,6 @@ function wireCell(cell, i) {
     if (!isMouse && !e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     const step = e.deltaY < 0 ? 0.08 : -0.08;
-    if (t.banner) { setBanner(t.banner.row, { bz: clamp((t.bz == null ? 1 : t.bz) + step, 1, ZMAX) }); setActive(i); refreshBannerRow(t.banner.row); syncZoom(); debHist(); return; }
     t.z = clamp((t.z == null ? 1 : t.z) + step, ZMIN, ZMAX);
     clampPan(t, a); setActive(i);
     const im = cell.querySelector('img'); if (im) applyImg(im, t, a, dims());
@@ -1246,7 +1322,7 @@ function wireGrip(grip, i) {
     const tgt = cellAt(e.clientX, e.clientY);
     ghost.style.display = 'none'; clearDrop();
     document.body.style.overflow = ''; document.body.style.touchAction = '';
-    if (tgt >= 0 && tgt !== drag.src) { const tmp = tiles[drag.src]; tiles[drag.src] = tiles[tgt]; tiles[tgt] = tmp; normalizeBanners(); sel.clear(); render(); updateExportUI(); commit(); } drag = null;
+    if (tgt >= 0 && tgt !== drag.src) { const tmp = tiles[drag.src]; tiles[drag.src] = tiles[tgt]; tiles[tgt] = tmp; sel.clear(); render(); updateExportUI(); commit(); } drag = null;
   };
   grip.addEventListener('pointerup', fin); grip.addEventListener('pointercancel', fin);
 }
@@ -1280,7 +1356,7 @@ function wireChip(el, a) {
   };
   el.addEventListener('pointerup', fin); el.addEventListener('pointercancel', fin);
 }
-function placeAsset(i, imgId) { const cap = tiles[i] && tiles[i].cap; tiles[i] = { imgId, z: 1, panX: 0, panY: 0 }; if (cap) tiles[i].cap = cap; normalizeBanners(); sel.delete(i); active = i; render(); updateExportUI(); syncZoom(); commit(); }
+function placeAsset(i, imgId) { const cap = tiles[i] && tiles[i].cap; tiles[i] = { imgId, z: 1, panX: 0, panY: 0 }; if (cap) tiles[i].cap = cap; sel.delete(i); active = i; render(); updateExportUI(); syncZoom(); commit(); }
 
 /* ---------- assets ---------- */
 /* shrink oversized imports before storing — keeps IndexedDB lean.
@@ -1365,29 +1441,53 @@ function addFileToCell(file, cellIdx) {
 
 window.addEventListener('beforeunload', () => { Object.keys(blobCache).forEach(revokeBlobURL); });
 window.addEventListener('pagehide', () => { Object.keys(blobCache).forEach(revokeBlobURL); });
-function renderTray() {
-  tray.innerHTML = '';
-  if (!lib.length) { tray.innerHTML = '<div class="tray-empty">no photos yet</div>'; return; }
-  lib.forEach(a => {
-    const el = document.createElement('div'); el.className = 'chip';
-    const img = document.createElement('img'); img.alt = a.name ? `Photo: ${a.name}` : 'Uploaded photo'; img.title = a.name || ''; setImgSrc(img, a);
-    const nm = document.createElement('span'); nm.className = 'name'; nm.textContent = a.name.length > 22 ? a.name.slice(0, 19) + '…' : a.name;
-    const x = document.createElement('button'); x.className = 'del'; x.textContent = '✕';
-    x.addEventListener('click', e => { e.stopPropagation(); lib = lib.filter(l => l.id !== a.id); del('assets', a.id); revokeBlobURL(a.id); let touched = false; for (let j = 0; j < tiles.length; j++) if (tiles[j] && tiles[j].imgId === a.id) { tiles[j] = null; sel.delete(j); touched = true; } if (touched) normalizeBanners(); render(); renderTray(); updateExportUI(); if (touched) commit(); });
-    el.append(img, nm, x); wireChip(el, a); tray.appendChild(el);
+/* The tray splits by whether a photo is already in the grid, so a long import stays
+   readable: FRESH is the work queue, USED is what's already placed. Both are derived
+   from `tiles` on every render — nothing extra is stored or synced. */
+const drawerOpen = { fresh: true, used: true };
+
+function makeChip(a, used) {
+  const el = document.createElement('div'); el.className = 'chip' + (used ? ' used' : '');
+  const img = document.createElement('img'); img.alt = a.name ? `Photo: ${a.name}` : 'Uploaded photo'; img.title = a.name || ''; setImgSrc(img, a);
+  const nm = document.createElement('span'); nm.className = 'name'; nm.textContent = a.name.length > 22 ? a.name.slice(0, 19) + '…' : a.name;
+  const x = document.createElement('button'); x.className = 'del'; x.textContent = '✕'; x.title = 'Remove this photo';
+  x.addEventListener('click', e => {
+    e.stopPropagation();
+    lib = lib.filter(l => l.id !== a.id); del('assets', a.id); revokeBlobURL(a.id);
+    let touched = false;
+    for (let j = 0; j < tiles.length; j++) if (tiles[j] && tiles[j].imgId === a.id) { tiles[j] = null; sel.delete(j); touched = true; }
+    render(); updateExportUI(); if (touched) commit();
   });
-  if (lib.length > 3) {
-    const hint = document.createElement('span'); hint.className = 'tray-hint'; hint.textContent = '→';
-    tray.appendChild(hint);
-    tray.addEventListener('scroll', () => { hint.style.opacity = tray.scrollLeft > 10 ? '0' : '.7'; }, { passive: true });
-  }
+  el.append(img, nm, x); wireChip(el, a);
+  return el;
 }
+
+function renderTray() {
+  const usedIds = new Set(tiles.filter(Boolean).map(t => t.imgId));
+  const fresh = lib.filter(a => !usedIds.has(a.id)), used = lib.filter(a => usedIds.has(a.id));
+  [['fresh', fresh, 'trayFresh', 'freshN', 'nothing waiting — all placed'],
+   ['used', used, 'trayUsed', 'usedN', 'no photos in the grid yet']].forEach(([key, list, bodyId, nId, empty]) => {
+    const body = $(bodyId); body.innerHTML = '';
+    $(nId).textContent = list.length;
+    if (!list.length) { const e = document.createElement('div'); e.className = 'tray-empty'; e.textContent = lib.length ? empty : 'no photos yet'; body.appendChild(e); }
+    else list.forEach(a => body.appendChild(makeChip(a, key === 'used')));
+    body.hidden = !drawerOpen[key];
+    const head = body.previousElementSibling;
+    head.setAttribute('aria-expanded', String(drawerOpen[key]));
+  });
+}
+
+document.querySelectorAll('.drawer-h').forEach(h => h.addEventListener('click', () => {
+  const key = h.parentElement.id === 'drawerUsed' ? 'used' : 'fresh';
+  drawerOpen[key] = !drawerOpen[key];
+  renderTray();
+}));
 
 /* ---------- zoom ui ---------- */
 function syncZoom() {
   const t = active != null ? tiles[active] : null; const on = !!t;
   zoomRange.disabled = !on;
-  const pct = on ? Math.round((t.banner ? (t.bz == null ? 1 : t.bz) : (t.z == null ? 1 : t.z)) * 100) : 100;
+  const pct = on ? Math.round((t.z == null ? 1 : t.z) * 100) : 100;
   zoomRange.value = pct; zoomRange.setAttribute('aria-valuenow', pct); zoomRange.setAttribute('aria-valuetext', on ? pct + '%' : 'inactive');
   const lbl = document.getElementById('zoomPct');
   if (!lbl) return;
@@ -1415,8 +1515,8 @@ function syncZoom() {
     if (active == null) return;
     const t = tiles[active]; if (!t) return; const a = lib.find(x => x.id === t.imgId); if (!a) return;
     const z = pct / 100;
-    if (t.banner) { setBanner(t.banner.row, { bz: clamp(z, 1, ZMAX) }); refreshBannerRow(t.banner.row); }
-    else { t.z = clamp(z, ZMIN, ZMAX); clampPan(t, a); const c = grid.children[active]; if (c) { const im = c.querySelector('img'); if (im) applyImg(im, t, a, dims()); } }
+    t.z = clamp(z, ZMIN, ZMAX); clampPan(t, a);
+    const c = grid.children[active]; if (c) { const im = c.querySelector('img'); if (im) applyImg(im, t, a, dims()); }
     syncZoom(); commit();
   };
   document.addEventListener('focusin', e => {
@@ -1446,7 +1546,6 @@ function syncZoom() {
 })();
 zoomRange.addEventListener('input', e => {
   if (active == null) return; const t = tiles[active]; if (!t) return; const a = lib.find(x => x.id === t.imgId); if (!a) return;
-  if (t.banner) { setBanner(t.banner.row, { bz: clamp(parseInt(e.target.value) / 100, 1, ZMAX) }); refreshBannerRow(t.banner.row); debHist(); return; }
   t.z = clamp(parseInt(e.target.value) / 100, ZMIN, ZMAX); clampPan(t, a);
   const c = grid.children[active]; if (c) { const im = c.querySelector('img'); if (im) applyImg(im, t, a, dims()); }
   debHist();
@@ -1507,7 +1606,7 @@ async function renderTileBlob(i, fmt) {
   const W = 1080, H = Math.round(1080 * RH / RW);
   canvas.width = W; canvas.height = H; const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-  const im = await loadImg(a.src); const p = place(t, a, W, H, t.banner ? 0 : GAP);
+  const im = await loadImg(a.src); const p = place(t, a, W, H);
   ctx.drawImage(im, p.left, p.top, p.w, p.h);
   return await new Promise(r => canvas.toBlob(r, fmt === 'jpg' ? 'image/jpeg' : 'image/png', fmt === 'jpg' ? 0.92 : undefined));
 }
@@ -1544,18 +1643,12 @@ async function renderCircleBlob(cropState, exportW, fmt) {
    copy-paste while posting. Returns '' when nothing is captioned, so the file is
    only added to the ZIP when it would actually carry something. */
 function captionsText(list, ext) {
-  const capFor = i => {
-    const t = tiles[i]; if (!t) return null;
-    if (t.banner) { const lead = tiles[t.banner.row * 3]; return t.banner.col === 0 ? (lead && lead.cap) || '' : null; }
-    return t.cap || '';
-  };
+  const capFor = i => { const t = tiles[i]; return t ? (t.cap || '') : ''; };
   if (!list.some(i => capFor(i))) return '';
   const out = [];
   list.forEach(i => {
     const name = `grid_${String(i + 1).padStart(2, '0')}.${ext}`;
-    const t = tiles[i], c = capFor(i);
-    if (c === null) { out.push(`${name}\n(slice of the spanned row above — same post)`); return; }
-    out.push(`${name}${t && t.banner ? ' (spanned row)' : ''}\n${c || '(no caption)'}`);
+    out.push(`${name}\n${capFor(i) || '(no caption)'}`);
   });
   return out.join('\n\n') + '\n';
 }
@@ -1638,67 +1731,71 @@ function buildZip(files) {
   return out;
 }
 
-/* ---------- grid size ---------- */
-function setRows(n) {
-  const newTotal = n * 3;
-  let src = tiles;
-  if (newTotal < tiles.length) {
-    // shrinking: find contiguous block of rows that best fits
-    // skip leading empty rows so bottom-up planning is preserved
-    const oldRows = tiles.length / 3;
-    let firstFilled = 0;
-    for (let r = 0; r < oldRows; r++) {
-      if (tiles[r*3] || tiles[r*3+1] || tiles[r*3+2]) { firstFilled = r; break; }
-      firstFilled = r + 1; // all empty — start from 0
-    }
-    // slice from firstFilled, keeping up to n rows; if too many filled rows, keep last n
-    const sliceStart = Math.max(firstFilled, oldRows - n);
-    src = tiles.slice(sliceStart * 3);
-  }
-  rows = n; total = newTotal;
-  const next = Array(total).fill(null);
-  for (let i = 0; i < Math.min(src.length, total); i++) next[i] = src[i] || null;
-  tiles = next; normalizeBanners(); sel.clear(); active = null; render(); updateExportUI(); syncZoom(); commit();
+/* ---------- grid size ----------
+   Rows are free-form: the grid always keeps one empty row at the bottom to grow
+   into (ensureTrailingRow, called from render), and the row grips insert/remove. */
+function insertRow(r) {
+  if (rows >= MAX_ROWS) return;
+  tiles.splice(r * 3, 0, null, null, null); rows++; total = rows * 3;
+  sel.clear(); active = null; render(); updateExportUI(); syncZoom(); commit();
+}
+function deleteRow(r) {
+  if (rows <= MIN_ROWS) return;
+  tiles.splice(r * 3, 3); rows--; total = rows * 3;
+  sel.clear(); active = null; render(); updateExportUI(); syncZoom(); commit();
+}
+/* grow-only: fill anything in the last row and a fresh empty one appears below it.
+   Never trims, so a grid you deliberately made tall stays tall — ✕ is the way back down. */
+function ensureTrailingRow() {
+  if (rows >= MAX_ROWS) return;
+  const last = (rows - 1) * 3;
+  if (tiles[last] || tiles[last + 1] || tiles[last + 2]) { tiles.push(null, null, null); rows++; total = rows * 3; }
 }
 function setRatio(w, h) {
   RW = w; RH = h;
   document.documentElement.style.setProperty('--ratio', w + ' / ' + h);
-  tiles.forEach(t => { if (t && !t.banner) { const a = lib.find(x => x.id === t.imgId); if (a) clampPan(t, a); } });
+  tiles.forEach(t => { if (t) { const a = lib.find(x => x.id === t.imgId); if (a) clampPan(t, a); } });
   render(); updateExportUI(); commit();
-}
-function spanRow(rowIdx, imgId) {
-  const start = rowIdx * 3;
-  if (start + 2 >= total) return;
-  // the row becomes one post — carry the leftmost slot's caption onto it
-  const cap = tiles[start] && tiles[start].cap;
-  for (let c = 0; c < 3; c++) { sel.delete(start + c); tiles[start + c] = { imgId, banner: { col: c, row: rowIdx }, bz: 1, panX: 0, panY: 0 }; }
-  if (cap) tiles[start].cap = cap;
-  active = start; render(); updateExportUI(); syncZoom(); commit();
-}
-function removeBannerRow(rowIdx) {
-  const s = rowIdx * 3;
-  for (let c = 0; c < 3; c++) if (tiles[s + c] && tiles[s + c].banner) { tiles[s + c] = null; sel.delete(s + c); }
-}
-/* any banner row split by a move/drop degrades gracefully to normal tiles */
-function normalizeBanners() {
-  for (let r = 0; r < rows; r++) {
-    const s = r * 3, a = tiles[s], b = tiles[s + 1], c = tiles[s + 2];
-    const okRow = a && a.banner && b && b.banner && c && c.banner &&
-      a.banner.row === r && b.banner.row === r && c.banner.row === r &&
-      a.imgId === b.imgId && b.imgId === c.imgId &&
-      a.banner.col === 0 && b.banner.col === 1 && c.banner.col === 2;
-    [s, s + 1, s + 2].forEach(k => { if (tiles[k] && tiles[k].banner && !okRow) { const cap = tiles[k].cap; tiles[k] = { imgId: tiles[k].imgId, z: 1, panX: 0, panY: 0 }; if (cap) tiles[k].cap = cap; } });
-  }
 }
 
 /* ---------- events ---------- */
 dropzone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', e => { Array.from(e.target.files).forEach(addFile); fileInput.value = ''; });
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('over'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('over'));
-dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('over'); if (e.dataTransfer.files.length) Array.from(e.dataTransfer.files).forEach(addFile); });
-window.addEventListener('dragover', e => { if (e.target === document.body) e.preventDefault(); });
-window.addEventListener('drop', e => { if (e.target === document.body) e.preventDefault(); });
+
+/* The whole window is the drop target — the sidebar box is just the click-to-browse
+   affordance. Drop onto a tile and the photo lands in that tile; drop anywhere else and
+   it goes to the tray. */
+const dropOverlay = $('dropOverlay');
+let dragDepth = 0;
+const hasFiles = e => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+const showDropOverlay = on => { dropOverlay.classList.toggle('on', on); dropzone.classList.toggle('over', on); };
+
+window.addEventListener('dragenter', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth++; showDropOverlay(true);
+});
+window.addEventListener('dragover', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+});
+window.addEventListener('dragleave', e => {
+  if (!hasFiles(e)) return;
+  // every child element fires its own leave, so only the outermost one counts
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) showDropOverlay(false);
+});
+window.addEventListener('drop', e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; showDropOverlay(false);
+  const files = Array.from(e.dataTransfer.files || []); if (!files.length) return;
+  // overlay is pointer-events:none, so this still finds the tile underneath the cursor
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const cell = el && el.closest ? el.closest('.cell') : null;
+  if (cell && cell.dataset.i != null) {
+    addFileToCell(files[0], parseInt(cell.dataset.i));
+    files.slice(1).forEach(addFile);
+  } else files.forEach(addFile);
+});
 
 $('clearBtn').addEventListener('click', () => {
   if (!filled().length) return;
@@ -1709,7 +1806,7 @@ $('randomBtn').addEventListener('click', () => {
   const placed = f.map(i => tiles[i]);
   for (let i = placed.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [placed[i], placed[j]] = [placed[j], placed[i]]; }
   let idx = 0; f.forEach(i => { tiles[i] = placed[idx++]; });
-  normalizeBanners(); sel.clear(); active = null; render(); updateExportUI(); syncZoom(); commit();
+  sel.clear(); active = null; render(); updateExportUI(); syncZoom(); commit();
 });
 $('exportBtn').addEventListener('click', () => { if (filled().length) openExport(); });
 $('exportBtnMobile').addEventListener('click', () => { if (filled().length) openExport(); });
@@ -1778,7 +1875,6 @@ exportModal.addEventListener('keydown', e => {
 $('showOrder').addEventListener('change', showFeedPreview);
 exportModal.addEventListener('click', e => { if (e.target === exportModal) closeExport(); });
 undoBtn.addEventListener('click', undo); redoBtn.addEventListener('click', redo);
-$('rowsSeg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { $('rowsSeg').querySelectorAll('button').forEach(x => x.classList.remove('active')); b.classList.add('active'); setRows(parseInt(b.dataset.rows)); }));
 $('ratioSeg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { $('ratioSeg').querySelectorAll('button').forEach(x => x.classList.remove('active')); b.classList.add('active'); setRatio(parseInt(b.dataset.rw), parseInt(b.dataset.rh)); }));
 window.addEventListener('keydown', e => {
   const m = e.ctrlKey || e.metaKey;
@@ -1792,6 +1888,23 @@ window.addEventListener('keydown', e => {
 });
 document.querySelector('.stage').addEventListener('pointerdown', e => { if (e.target.classList.contains('stage') || e.target.classList.contains('phone') || e.target.classList.contains('grid')) { if (assignTarget >= 0) exitAssign(); setActive(null); } });
 let rt = null; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 120); });
+
+/* The header is pinned, so the workspace height is derived from it — but it wraps to two or
+   three lines on narrow viewports, so the static 56px in :root can't be trusted. Measure it. */
+(function trackHeaderHeight() {
+  const hdr = document.querySelector('.header'); if (!hdr) return;
+  let t = null;
+  let last = 0;
+  const setH = () => {
+    const h = Math.round(hdr.getBoundingClientRect().height);
+    if (!h || h === last) return;                  // no-op writes would just churn the observer
+    last = h;
+    document.documentElement.style.setProperty('--header-h', h + 'px');
+    clearTimeout(t); t = setTimeout(render, 60);   // stage height moved — re-fit the phone
+  };
+  if (window.ResizeObserver) new ResizeObserver(setH).observe(hdr);
+  setH();
+})();
 
 /* ---------- export the whole profile as one PNG (hand-drawn, no libs) ---------- */
 function wrapLines(ctx, text, maxW) {
@@ -2244,14 +2357,13 @@ async function applyRemote(data, urls) {
       RW = data.RW; RH = data.RH;
       document.documentElement.style.setProperty('--ratio', RW + ' / ' + RH);
     }
-    rows = data.rows || 3; total = rows * 3;
+    rows = Math.max(MIN_ROWS, data.rows || 3); total = rows * 3;
     const ids = new Set(lib.map(x => x.id));
-    tiles = (data.tiles || []).map(t => (t && ids.has(t.imgId)) ? t : null);
+    tiles = (data.tiles || []).map(t => (t && ids.has(t.imgId)) ? demoteBanner(t) : null);
     while (tiles.length < total) tiles.push(null);
     tiles.length = total;
     if (data.profile) profile = Object.assign(profile, data.profile);
 
-    $('rowsSeg').querySelectorAll('button').forEach(b => b.classList.toggle('active', parseInt(b.dataset.rows) === rows));
     $('ratioSeg').querySelectorAll('button').forEach(b => b.classList.toggle('active', parseInt(b.dataset.rw) === RW && parseInt(b.dataset.rh) === RH));
 
     sel.clear(); active = null;
@@ -2445,7 +2557,7 @@ async function initSync() {
   if (ok) {
     const a = await all('assets'); if (a.length) { lib = a; lib.forEach(asset => cacheDisplayBlob(asset.id, asset.src)); }
     const st = (await all('state')).find(s => s.key === 'layout');
-    if (st) { rows = st.rows || 3; total = rows * 3; if (st.RW && st.RH) { RW = st.RW; RH = st.RH; document.documentElement.style.setProperty('--ratio', RW + ' / ' + RH); } tiles = (st.tiles || []).map(t => t || null); while (tiles.length < total) tiles.push(null); const ids = new Set(lib.map(x => x.id)); tiles = tiles.map(t => { if (!t || !ids.has(t.imgId)) return null; if (!t.banner && t.z == null) t.z = 1; delete t.mode; delete t.zoom; return t; }); $('rowsSeg').querySelectorAll('button').forEach(b => b.classList.toggle('active', parseInt(b.dataset.rows) === rows)); $('ratioSeg').querySelectorAll('button').forEach(b => b.classList.toggle('active', parseInt(b.dataset.rw) === RW && parseInt(b.dataset.rh) === RH)); }
+    if (st) { rows = Math.max(MIN_ROWS, st.rows || 3); total = rows * 3; if (st.RW && st.RH) { RW = st.RW; RH = st.RH; document.documentElement.style.setProperty('--ratio', RW + ' / ' + RH); } tiles = (st.tiles || []).map(t => t || null); while (tiles.length < total) tiles.push(null); const ids = new Set(lib.map(x => x.id)); tiles = tiles.map(t => { if (!t || !ids.has(t.imgId)) return null; t = demoteBanner(t); if (t.z == null) t.z = 1; delete t.mode; delete t.zoom; return t; }); $('ratioSeg').querySelectorAll('button').forEach(b => b.classList.toggle('active', parseInt(b.dataset.rw) === RW && parseInt(b.dataset.rh) === RH)); }
   }
   if (!tiles.length) tiles = Array(9).fill(null);
   await loadProfile();
