@@ -1,4 +1,4 @@
-# mkgrid
+# instagrid
 
 > **An Instagram Grid Planner That Stays On Your Machine**
 > *Don't post it before you mock it. YOUR feed. YOUR pixels. YOUR machine.*
@@ -6,11 +6,11 @@
 > **This is a fork** of [chrisvrakas/mkgrid](https://github.com/chrisvrakas/mkgrid) (MIT), with two additions:
 > per-post **captions** and opt-in **cross-device sync**. Everything else is Chris Vrakas's work.
 
-<div align="center"><img src="assets/images/mkgrid-banner.png" alt="mkgrid — make grid" width="100%"></div>
+<div align="center"><img src="assets/images/instagrid-banner.png" alt="instagrid — make grid" width="100%"></div>
 
 ---
 
-mkgrid is a browser-based tool for planning your Instagram grid *before* you post. Drag in your photos, arrange the feed, crop every tile, span an image across a whole row, rearrange rows, write the caption for each post, preview the whole profile, and export post-ready images — or the entire feed as one picture. Nothing tracks you, and by default nothing leaves your machine.
+instagrid is a browser-based tool for planning your Instagram grid *before* you post. Drag in your photos, arrange the feed, crop every tile, span an image across a whole row, rearrange rows, write the caption for each post, preview the whole profile, and export post-ready images — or the entire feed as one picture. Nothing tracks you, and by default nothing leaves your machine.
 
 Built for people who want to plan a beautiful feed without handing unreleased work to big-tech surveillance capitalism 
 
@@ -35,7 +35,7 @@ Your Instagram grid is a first impression you only get to make once. The order o
 
 So people rehearse. The problem is *how*. Every existing grid planner wants you to create an account, upload your unreleased photos to their servers, and pay a monthly subscription to unlock basic features — all to preview a layout. You hand over your content and your data to plan a grid.
 
-**[mkgrid.app](https://mkgrid.app)** does the same job with none of that. It's one HTML file that runs entirely in your browser. Your photos are loaded, arranged, cropped, and exported on your own machine. There is no account, no upload, no server, no analytics. Close the tab and the only place your feed ever existed is your own browser.
+**[instagrid-app.vercel.app](https://instagrid-app.vercel.app)** does the same job with none of that. It's one HTML file that runs entirely in your browser. Your photos are loaded, arranged, cropped, and exported on your own machine. There is no account, no upload, no server, no analytics. Close the tab and the only place your feed ever existed is your own browser.
 
 The privacy of your work depends on the ownership of your work. 
 
@@ -47,7 +47,7 @@ It's `mkdir` for your feed: **make grid**.
 
 > **Never used a tool like this?** There's nothing to install and nothing to sign up for. It's a website.
 
-**Step 1** — Open **[mkgrid.app](https://mkgrid.app)** in any modern browser (desktop or mobile).
+**Step 1** — Open **[instagrid-app.vercel.app](https://instagrid-app.vercel.app)** in any modern browser (desktop or mobile).
 
 **Step 2** — Drag your photos onto the grid, or click to pick them. They load instantly — and stay on your device.
 
@@ -76,7 +76,7 @@ That's it. Your work auto-saves locally, so it's there when you come back.
 ## Features
 
 ### True 3:4 Grid
-Instagram switched grid thumbnails to a 3:4 vertical crop in early 2025. mkgrid matches it by default, so what you plan is what posts — no surprise re-cropping when you upload. Toggle to **4:5** or **1:1** for legacy content.
+Instagram switched grid thumbnails to a 3:4 vertical crop in early 2025. instagrid matches it by default, so what you plan is what posts — no surprise re-cropping when you upload. Toggle to **4:5** or **1:1** for legacy content.
 
 ### Drag, Arrange & Crop
 Pointer-driven reordering with per-tile pan and continuous zoom — from whole-image (letterboxed) through fill, all the way to 5×. Every tile gets the exact crop you want. Works identically with mouse and touch.
@@ -110,13 +110,13 @@ Undo / redo with keyboard shortcuts, downscale-on-import to keep things fast, an
 
 Here's the trick the subscription apps can't do as cleanly: **plan one image spanned across three tiles, export the whole feed, and post it row by row.** Your profile grid becomes a single composition — a panorama, a manifesto, a billboard — assembled from individual posts that only line up because you planned them in advance.
 
-The feed *is* the marketing. mkgrid is how you build it.
+The feed *is* the marketing. instagrid is how you build it.
 
 ---
 
 ## Philosophy
 
-mkgrid follows a strict set of principles:
+instagrid follows a strict set of principles:
 
 **Privacy as architecture.** The privacy isn't a promise — it's the build. There is no backend, so there is nothing to leak, sell, or subpoena. The whole tool is a static file you can read top to bottom.
 
@@ -126,7 +126,7 @@ mkgrid follows a strict set of principles:
 
 **Don't trust me. Verify.** Open DevTools, watch the Network tab, read the source. The proof that nothing is uploaded is that there's nothing to find.
 
-> *"A GUI makes easy tasks easy. A CLI makes difficult tasks possible. And if you're not the customer, you're the product — so mkgrid sells you nothing."*
+> *"A GUI makes easy tasks easy. A CLI makes difficult tasks possible. And if you're not the customer, you're the product — so instagrid sells you nothing."*
 
 ---
 
@@ -141,7 +141,7 @@ Every action — importing, cropping, arranging, captioning, previewing, exporti
 - Lose the link and you can't reach the board from a *new* device; devices already syncing keep their local copy.
 - Your local copy is always authoritative, so a backend outage degrades to the original local-only app instead of losing work.
 
-Nothing above happens until you deliberately create a board. The site is hosted on Vercel, which keeps standard access logs (IP, timestamp) for security. mkgrid itself records nothing.
+Nothing above happens until you deliberately create a board. The site is hosted on Vercel, which keeps standard access logs (IP, timestamp) for security. instagrid itself records nothing.
 
 > *"Privacy is not secrecy. A private matter is something one doesn't want the whole world to know, but a secret matter is something one doesn't want anybody to know. Privacy is the power to selectively reveal oneself to the world."* — Eric Hughes, *A Cypherpunk's Manifesto*
 
@@ -165,7 +165,7 @@ That's exactly what planning a feed is: deciding, in private, what you'll reveal
 
 ## 🔧 Recommended Tools
 
-mkgrid is one piece of a private creative workflow. Consider expanding to a broader stack worth building around it:
+instagrid is one piece of a private creative workflow. Consider expanding to a broader stack worth building around it:
 
 ### Image & Metadata
 - **[exiftool](https://exiftool.org)** — strip EXIF/GPS metadata from photos *before* posting. Prevents doxxing via image data.
@@ -180,7 +180,7 @@ Looking for more? I maintain an ever-evolving list of 1,000+ hand-picked privacy
 
 ## 🙏 Credits & Inspiration
 
-mkgrid is built on a belief that creative tools can be private *and* good. In that spirit:
+instagrid is built on a belief that creative tools can be private *and* good. In that spirit:
 
 - **[@chris_vrakas](https://instagram.com/chris_vrakas)** — years of hand-planning a feed in Photoshop, the workflow this tool replaces
 - Every cypherpunk, hacker, and contrarian who proved software can respect you and still be a joy to use
@@ -195,7 +195,7 @@ mkgrid is built on a belief that creative tools can be private *and* good. In th
 
 Open source under the [MIT License](LICENSE) — fork it, modify it, learn from it. Just give credit where it's due.
 
-> Copyright wasn't handed down from on high. In 1710 the Statute of Anne broke the Stationers' monopoly on knowledge by *limiting* copyright — and for the first time, works like Shakespeare's escaped the control of monopoly publishers. Free culture was born from a limit on control, not an expansion of it. mkgrid is built in that tradition: a tool you can read, fork, and own.
+> Copyright wasn't handed down from on high. In 1710 the Statute of Anne broke the Stationers' monopoly on knowledge by *limiting* copyright — and for the first time, works like Shakespeare's escaped the control of monopoly publishers. Free culture was born from a limit on control, not an expansion of it. instagrid is built in that tradition: a tool you can read, fork, and own.
 
 ---
 
@@ -228,7 +228,7 @@ Open source under the [MIT License](LICENSE) — fork it, modify it, learn from 
 
 <br>
 
-**[mkgrid.app](https://mkgrid.app)** · **[@mkgrid.app](https://instagram.com/mkgrid.app)** · **[GitHub](https://github.com/chrisvrakas/mkgrid)**
+**[instagrid-app.vercel.app](https://instagrid-app.vercel.app)** · **[@mkgrid.app](https://instagram.com/mkgrid.app)** · **[GitHub](https://github.com/rockless10/instagrid)**
 
 <br>
 

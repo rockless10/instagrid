@@ -1,5 +1,5 @@
-# mkgrid — https://mkgrid.vercel.app
+# instagrid — https://instagrid-app.vercel.app
 User-agent: *
 Allow: /
 
-Sitemap: https://mkgrid.vercel.app/sitemap.xml
+Sitemap: https://instagrid-app.vercel.app/sitemap.xml
