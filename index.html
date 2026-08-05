@@ -1244,8 +1244,9 @@ function setActive(i) {
    "open this post"; keep holding (or drag) and you meant "re-frame this photo". Only the
    second one claims the tile — so the zoom control always follows the photo you last HELD,
    never one you merely clicked. The grip corner is untouched: it still reorders. */
-const HOLD_MS = 280;   // press this long and the tile switches to framing
-const MOVE_TOL = 4;    // px of travel that already reads as a drag, not a click
+const HOLD_MS = 280;        // mouse: press this long and the tile switches to framing
+const HOLD_MS_TOUCH = 450;  // touch: longer, so a swipe-to-scroll doesn't get mistaken for a hold
+const MOVE_TOL = 4;    // px of travel that already reads as a drag, not a click (mouse only — see pointermove)
 const g = { mode: null, i: null, pts: new Map(), pX: 0, pY: 0, z: 1, dist: 0, sx: 0, sy: 0, lx: 0, ly: 0, moved: false, holdT: null };
 const distp = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 function clearHold() { clearTimeout(g.holdT); g.holdT = null; }
@@ -1282,12 +1283,13 @@ function wireCell(cell, i) {
     }
     g.i = i; g.mode = 'pending';
     g.sx = g.lx = e.clientX; g.sy = g.ly = e.clientY; g.moved = false;
+    g.ptrType = e.pointerType;
     clearHold();
     g.holdT = setTimeout(() => {
       if (g.mode !== 'pending' || g.i !== i) return;
       startPan();
-      if (navigator.vibrate) { try { navigator.vibrate(8); } catch (_) {} }
-    }, HOLD_MS);
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
+    }, e.pointerType === 'mouse' ? HOLD_MS : HOLD_MS_TOUCH);
     try { cell.setPointerCapture(e.pointerId); } catch (_) {}
   });
   cell.addEventListener('pointermove', e => {
@@ -1295,8 +1297,10 @@ function wireCell(cell, i) {
     if (g.pts.has(e.pointerId)) g.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     g.lx = e.clientX; g.ly = e.clientY;
     const t = tiles[i]; if (!t) return; const a = lib.find(x => x.id === t.imgId); if (!a) return; const d = dims();
-    // a deliberate drag is a hold in a hurry — don't make the user wait out the timer
-    if (g.mode === 'pending' && distp({ x: g.sx, y: g.sy }, { x: e.clientX, y: e.clientY }) > MOVE_TOL) {
+    // a deliberate drag is a hold in a hurry — don't make the user wait out the timer.
+    // Mouse only: on touch this is exactly what turns a swipe-to-scroll into an accidental
+    // reframe, so touch always waits out the (longer) hold timer instead.
+    if (g.mode === 'pending' && g.ptrType === 'mouse' && distp({ x: g.sx, y: g.sy }, { x: e.clientX, y: e.clientY }) > MOVE_TOL) {
       g.sx = g.lx; g.sy = g.ly;   // startPan re-origins here; the tolerance isn't lost motion
       startPan();
     }
