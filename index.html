@@ -137,6 +137,10 @@
   #assignHint { display: none; }
   #mobileZoomRow { display: none; }
   .mobile-zoom-strip { display: none; }
+  /* mobile photo drawer — the sidebar becomes a slide-out panel, see the 820px media query */
+  #photosToggle { display: none; }
+  #sidebarBackdrop { display: none; }
+  .sidebar-close { display: none; }
   .cell.assign-target { outline: 2px solid var(--accent) !important; outline-offset: -2px; animation: assignPulse 1s ease-in-out infinite; }
   .chip.assign-ready { outline: 2px solid var(--accent); outline-offset: 2px; }
   @keyframes assignPulse { 0%,100% { opacity:.7; } 50% { opacity:1; } }
@@ -477,8 +481,39 @@
     #clearBtn { flex: 2 1 auto; }
     #randomBtn { flex: 2 1 auto; }
     #exportBtn { display: none; }
-    /* hide entire sidebar on mobile — per-cell pickers replace it */
-    .sidebar { display: none; }
+    /* sidebar becomes a slide-out drawer on mobile — the FRESH/USED photo repository,
+       reachable via the floating tab or automatically when tap-to-assign needs it */
+    .sidebar {
+      position: fixed; top: var(--header-h); bottom: var(--statusbar-h); left: 0;
+      width: min(82vw, 340px); z-index: 650;
+      transform: translateX(-100%); transition: transform .22s ease;
+      box-shadow: 10px 0 34px rgba(0,0,0,.55); border-right: 1px solid var(--border-bright);
+    }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar-close {
+      display: flex; align-items: center; justify-content: center;
+      position: absolute; top: 10px; right: 10px; width: 28px; height: 28px;
+      background: var(--elevated); border: 1px solid var(--border-bright); border-radius: 6px;
+      color: var(--text-dim); font-size: 14px; cursor: pointer; z-index: 1;
+    }
+    #photosToggle {
+      display: flex; align-items: center; gap: 5px; position: fixed; left: 0;
+      top: 50%; transform: translateY(-50%); z-index: 620;
+      background: var(--elevated); border: 1px solid var(--border-bright); border-left: none;
+      border-radius: 0 8px 8px 0; color: var(--text); padding: 10px 8px 10px 10px;
+      font: inherit; font-size: 15px; cursor: pointer; box-shadow: 4px 0 16px rgba(0,0,0,.4);
+    }
+    #photosToggle .pt-n {
+      background: var(--accent); color: #000; font-size: 10px; font-weight: 700;
+      min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #photosToggle .pt-n[hidden] { display: none; }
+    #sidebarBackdrop {
+      display: block; position: fixed; top: var(--header-h); left: 0; right: 0; bottom: var(--statusbar-h);
+      background: rgba(0,0,0,.5); z-index: 640; opacity: 0; pointer-events: none; transition: opacity .2s;
+    }
+    #sidebarBackdrop.on { opacity: 1; pointer-events: auto; }
     /* zoom row lives in the header, below the action buttons */
     #mobileZoomRow { display: flex; align-items: center; gap: 8px; padding: 8px 2px 2px; border-top: 1px solid var(--border); margin-top: 2px; }
     .mz-label { font-size: 9px; letter-spacing: 2px; color: var(--accent); flex-shrink: 0; }
@@ -586,9 +621,15 @@
     </div>
   </div>
 
+  <button id="photosToggle" type="button" aria-label="Open photo library" aria-expanded="false" aria-controls="tray">
+    <span aria-hidden="true">🖼</span><span class="pt-n" id="photosToggleN" hidden>0</span>
+  </button>
+  <div id="sidebarBackdrop"></div>
+
   <div class="shell">
   <div class="main">
     <div class="sidebar">
+      <button class="sidebar-close" id="sidebarClose" type="button" aria-label="Close photo library">✕</button>
       <div class="dropzone" id="dropzone">
         <strong>+ ADD PHOTOS</strong>
         <span>tap, or drop anywhere · kept on your device</span>
@@ -952,10 +993,12 @@ function render() {
       const file = e.target.files[0]; if (!file) return; cellInput.value = '';
       addFileToCell(file, cellIdx);
     });
-    // tapping the + on an empty cell opens the picker directly on mobile
+    // tapping the + on an empty cell: reuse a photo from the library if one's already
+    // there, otherwise open the picker directly to import a new one
     plus.addEventListener('click', e => {
       e.stopPropagation();
-      cellInput.click();
+      if (lib.length > 0) { setActive(cellIdx); enterAssign(cellIdx); }
+      else { cellInput.click(); }
     });
     cell.append(img, plus, grip, check, tools, capBadge, cellInput);
 
@@ -1388,6 +1431,7 @@ function wireChip(el, a) {
     drag = { kind: 'tray', id: e.pointerId, imgId: a.id };
     showGhost(displaySrc(a)); moveGhost(e.clientX, e.clientY); el.classList.add('dragging');
     document.body.style.overflow = 'hidden'; document.body.style.touchAction = 'none';
+    closeSidebar();   // clear the drawer out of the way so the whole grid is visible to drop on
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
   });
   el.addEventListener('pointermove', e => { if (!drag || drag.id !== e.pointerId) return; e.preventDefault(); moveGhost(e.clientX, e.clientY); hintDrop(cellAt(e.clientX, e.clientY)); });
@@ -1524,6 +1568,8 @@ function renderTray() {
     const head = body.previousElementSibling;
     head.setAttribute('aria-expanded', String(drawerOpen[key]));
   });
+  const toggleN = $('photosToggleN');
+  toggleN.textContent = lib.length; toggleN.hidden = lib.length === 0;
 }
 
 document.querySelectorAll('.drawer-h').forEach(h => h.addEventListener('click', () => {
@@ -1811,6 +1857,18 @@ function setRatio(w, h) {
 dropzone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', e => { Array.from(e.target.files).forEach(addFile); fileInput.value = ''; });
 
+/* ---------- mobile photo drawer ---------- */
+/* On mobile the sidebar (dropzone + FRESH/USED tray) is a slide-out drawer instead of a
+   permanent column. It opens from the floating tab, or automatically when tap-to-assign
+   needs a photo to be visible to tap. */
+const sidebarEl = document.querySelector('.sidebar');
+const photosToggle = $('photosToggle'), sidebarBackdrop = $('sidebarBackdrop'), sidebarClose = $('sidebarClose');
+function openSidebar() { sidebarEl.classList.add('open'); sidebarBackdrop.classList.add('on'); photosToggle.setAttribute('aria-expanded', 'true'); }
+function closeSidebar() { sidebarEl.classList.remove('open'); sidebarBackdrop.classList.remove('on'); photosToggle.setAttribute('aria-expanded', 'false'); }
+photosToggle.addEventListener('click', () => { sidebarEl.classList.contains('open') ? closeSidebar() : openSidebar(); });
+sidebarBackdrop.addEventListener('click', closeSidebar);
+sidebarClose.addEventListener('click', closeSidebar);
+
 /* The whole window is the drop target — the sidebar box is just the click-to-browse
    affordance. Drop onto a tile and the photo lands in that tile; drop anywhere else and
    it goes to the tray. */
@@ -1869,15 +1927,18 @@ function enterAssign(i) {
   [...grid.children].forEach((c, idx) => c.classList.toggle('assign-target', idx === i));
   // highlight all tray chips as tappable
   document.querySelectorAll('.chip').forEach(c => c.classList.add('assign-ready'));
+  // the tray lives in the mobile drawer — open it so there's actually something to tap
+  openSidebar();
   // show hint
   const hint = document.getElementById('assignHint');
-  if (hint) { hint.style.display = 'block'; hint.textContent = 'tap a photo above to place it — or tap × to cancel'; }
+  if (hint) { hint.style.display = 'block'; hint.textContent = 'tap a photo in the drawer to place it — or tap × to cancel'; }
 }
 
 function exitAssign() {
   assignTarget = -1;
   [...grid.children].forEach(c => c.classList.remove('assign-target'));
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('assign-ready'));
+  closeSidebar();
   const hint = document.getElementById('assignHint');
   if (hint) hint.style.display = 'none';
 }
@@ -1934,6 +1995,7 @@ window.addEventListener('keydown', e => {
     const editable = document.activeElement && (document.activeElement.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
     if (!editable) { e.preventDefault(); sel.forEach(i => { tiles[i] = null; }); sel.clear(); active = null; render(); updateExportUI(); syncZoom(); commit(); }
   }
+  else if (e.key === 'Escape' && sidebarEl.classList.contains('open')) { if (assignTarget >= 0) exitAssign(); else closeSidebar(); }
 });
 document.querySelector('.stage').addEventListener('pointerdown', e => { if (e.target.classList.contains('stage') || e.target.classList.contains('phone') || e.target.classList.contains('grid')) { if (assignTarget >= 0) exitAssign(); setActive(null); } });
 let rt = null; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 120); });
