@@ -497,10 +497,11 @@
       color: var(--text-dim); font-size: 14px; cursor: pointer; z-index: 1;
     }
     #photosToggle {
+      /* tucked right under the fixed header, so it never floats over the middle of the grid */
       display: flex; align-items: center; gap: 5px; position: fixed; left: 0;
-      top: 50%; transform: translateY(-50%); z-index: 620;
-      background: var(--elevated); border: 1px solid var(--border-bright); border-left: none;
-      border-radius: 0 8px 8px 0; color: var(--text); padding: 10px 8px 10px 10px;
+      top: var(--header-h); z-index: 620;
+      background: var(--elevated); border: 1px solid var(--border-bright); border-left: none; border-top: none;
+      border-radius: 0 0 8px 0; color: var(--text); padding: 10px 8px 10px 10px;
       font: inherit; font-size: 15px; cursor: pointer; box-shadow: 4px 0 16px rgba(0,0,0,.4);
     }
     #photosToggle .pt-n {
@@ -877,7 +878,7 @@ const $ = id => document.getElementById(id);
 /* ---------- state ---------- */
 let rows = 3, total = 9;
 let tiles = [];                 // null | { imgId, z, panX, panY, cap }
-let lib = [];                   // { id, name, src, w, h }
+let lib = [];                   // { id, name, w, h, thumb, path, thumbPath } — see assets below
 let sel = new Set();
 let active = null;
 let RW = 3, RH = 4; const GAP = 2, ZMIN = 0, ZMAX = 5;
@@ -910,9 +911,12 @@ function openDB() {
     // the app already degrades to memory-only when this resolves null.
     let done = false;
     const finish = v => { if (!done) { done = true; res(v); } };
-    let r; try { r = indexedDB.open('gridctrl_mvp', 1); } catch (e) { return finish(null); }
-    r.onupgradeneeded = e => { const d = e.target.result; if (!d.objectStoreNames.contains('assets')) d.createObjectStore('assets', { keyPath: 'id' }); if (!d.objectStoreNames.contains('state')) d.createObjectStore('state', { keyPath: 'key' }); };
-    r.onsuccess = () => finish(r.result);
+    // v2 adds `originals`: full-size photos live apart from the small `assets` records, so
+    // opening the app reads a few hundred KB of thumbnails instead of every full photo.
+    let r; try { r = indexedDB.open('gridctrl_mvp', 2); } catch (e) { return finish(null); }
+    r.onupgradeneeded = e => { const d = e.target.result; if (!d.objectStoreNames.contains('assets')) d.createObjectStore('assets', { keyPath: 'id' }); if (!d.objectStoreNames.contains('state')) d.createObjectStore('state', { keyPath: 'key' }); if (!d.objectStoreNames.contains('originals')) d.createObjectStore('originals', { keyPath: 'id' }); };
+    // let a future upgrade in another tab through instead of leaving it blocked
+    r.onsuccess = () => { const d = r.result; d.onversionchange = () => d.close(); finish(d); };
     r.onerror = () => finish(null);
     r.onblocked = () => finish(null);
     setTimeout(() => finish(null), 4000);
@@ -920,6 +924,7 @@ function openDB() {
 }
 const put = (s, v) => new Promise(res => { if (!db) return res(); try { const t = db.transaction(s, 'readwrite'); t.objectStore(s).put(v); t.oncomplete = res; t.onerror = () => { console.error('instagrid: save failed', t.error); res(); }; } catch (e) { console.error('instagrid: save error', e); res(); } });
 const del = (s, k) => new Promise(res => { if (!db) return res(); try { const t = db.transaction(s, 'readwrite'); t.objectStore(s).delete(k); t.oncomplete = res; t.onerror = res; } catch (e) { res(); } });
+const getOne = (s, k) => new Promise(res => { if (!db) return res(null); try { const q = db.transaction(s, 'readonly').objectStore(s).get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); } catch (e) { res(null); } });
 const all = s => new Promise(res => { if (!db) return res([]); try { const t = db.transaction(s, 'readonly'); const q = t.objectStore(s).getAll(); q.onsuccess = () => res(q.result || []); q.onerror = () => res([]); } catch (e) { res([]); } });
 let saveT = null;
 /* schedulePush() sits outside the `ok` guard on purpose: local persistence and cloud
@@ -1245,11 +1250,10 @@ async function copyCaption() {
 async function downloadCaptionPhoto() {
   if (capTarget == null) return;
   const t = tiles[capTarget]; if (!t) return;
-  const a = lib.find(x => x.id === t.imgId); if (!a || !a.src) return;
+  const a = lib.find(x => x.id === t.imgId); if (!a) return;
   const b = $('capDownload');
   b.disabled = true; b.textContent = 'Preparing…';
-  let blob = null;
-  try { blob = await dataUrlToBlob(a.src); } catch (_) {}
+  const blob = await originalBlob(a);   // may come down from the shared board the first time
   b.textContent = CAP_DL_LABEL; b.disabled = false;
   if (!blob) return;
   // keep the imported filename; fall back to the blob's own type when it carries no extension
@@ -1447,26 +1451,57 @@ function wireChip(el, a) {
 function placeAsset(i, imgId) { const cap = tiles[i] && tiles[i].cap; tiles[i] = { imgId, z: 1, panX: 0, panY: 0 }; if (cap) tiles[i].cap = cap; sel.delete(i); active = i; render(); updateExportUI(); syncZoom(); commit(); }
 
 /* ---------- assets ---------- */
+/* Every photo is kept twice:
+     - a small JPEG thumbnail (THUMB_MAX on the long side) on the `assets` record, which is
+       all the grid, tray and previews ever draw — this is what loads when the app opens;
+     - the full import in the `originals` store, read only when something needs real pixels:
+       EXPORT, the profile picture at high zoom, and "Download original".
+   On a synced board the same split holds: a device fetches the thumbnails up front and
+   pulls an original down the first time it is actually needed. */
+const THUMB_MAX = 800;
+
 /* shrink oversized imports before storing — keeps IndexedDB lean.
-   PNGs keep alpha; everything else re-encodes to JPEG. Only kicks in above maxSide. */
-function downscale(dataURL, maxSide, mime) {
+   PNGs keep alpha; everything else re-encodes to JPEG. Only kicks in above maxSide.
+   withThumb also returns the display thumbnail, cut from the same decode. */
+function downscale(dataURL, maxSide, mime, withThumb) {
   return new Promise(res => {
     const im = new Image();
-    im.onload = () => {
+    im.onload = async () => {
+      const thumb = withThumb ? await makeThumb(im) : null;
       const big = Math.max(im.width, im.height);
-      if (big <= maxSide) { res({ src: dataURL, w: im.width, h: im.height }); return; }
+      if (big <= maxSide) { res({ src: dataURL, w: im.width, h: im.height, thumb }); return; }
       const sc = maxSide / big, w = Math.round(im.width * sc), h = Math.round(im.height * sc);
       const c = document.createElement('canvas'); c.width = w; c.height = h;
       c.getContext('2d').drawImage(im, 0, 0, w, h);
       const png = (mime || '').includes('png');
-      try { res({ src: c.toDataURL(png ? 'image/png' : 'image/jpeg', png ? undefined : 0.9), w, h }); }
-      catch (e) { res({ src: dataURL, w: im.width, h: im.height }); }
+      try { res({ src: c.toDataURL(png ? 'image/png' : 'image/jpeg', png ? undefined : 0.9), w, h, thumb }); }
+      catch (e) { res({ src: dataURL, w: im.width, h: im.height, thumb }); }
     };
-    im.onerror = () => res({ src: dataURL, w: 0, h: 0 });
+    im.onerror = () => res({ src: dataURL, w: 0, h: 0, thumb: null });
     im.src = dataURL;
   });
 }
-const blobCache = {};   // imgId → blobURL (in-memory, for iOS display)
+
+/* A loaded image → JPEG thumbnail Blob (null if the browser can't encode one). */
+function makeThumb(im) {
+  const iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height;
+  if (!iw || !ih) return Promise.resolve(null);
+  const sc = Math.min(1, THUMB_MAX / Math.max(iw, ih));
+  const c = document.createElement('canvas'); c.width = Math.round(iw * sc); c.height = Math.round(ih * sc);
+  const ctx = c.getContext('2d'); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(im, 0, 0, c.width, c.height);
+  return new Promise(res => { try { c.toBlob(b => res(b || null), 'image/jpeg', 0.82); } catch (_) { res(null); } });
+}
+function thumbFrom(src) {
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => makeThumb(im).then(res);
+    im.onerror = () => res(null);
+    im.src = src;
+  });
+}
+
+const blobCache = {};   // imgId → blobURL of the thumbnail (in-memory)
 
 function cacheDisplayBlob(id, source) {
   if (!id || !source) return;
@@ -1489,42 +1524,92 @@ function revokeBlobURL(id) {
   if (blobCache[id]) { try { URL.revokeObjectURL(blobCache[id]); } catch (_) {} delete blobCache[id]; }
 }
 
-function displaySrc(a) { return blobCache[a.id] || a.src; }
+function displaySrc(a) { return blobCache[a.id] || a.src || ''; }
 
 function setImgSrc(img, a) {
   img.src = displaySrc(a);
-  img.onerror = () => { if (img.src !== a.src) { img.src = a.src; img.onerror = null; } };
+  img.onerror = () => { if (a.src && img.src !== a.src) { img.src = a.src; img.onerror = null; } };
 }
 
-function addFile(file) {
-  if (!file.type.startsWith('image/')) return;
-  if (file.size > 50 * 1024 * 1024) { alert('Image is too large (max 50 MB). Please resize it first.'); return; }
-  const r = new FileReader();
-  r.onload = async e => {
-    const ds = await downscale(e.target.result, 2400, file.type);
-    if (!ds.w || !ds.h) return;   // reject zero-dimension (failed decode)
-    const id = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random());
-    cacheDisplayBlob(id, file);   // use original File — no size limit on iOS
-    const a = { id, name: file.name, src: ds.src, w: ds.w, h: ds.h }; lib.push(a); put('assets', a); renderTray();
-    schedulePush();   // a tray-only add never reaches save(), so nudge sync directly
-  };
-  r.readAsDataURL(file);
+/* The full-size photo as a Blob: this session's import, then this device's store, then
+   the shared board. A board download is kept, so each original crosses the network once. */
+async function originalBlob(a) {
+  if (a.src) { try { return await dataUrlToBlob(a.src); } catch (_) { return null; } }
+  const rec = await getOne('originals', a.id);
+  if (rec && rec.blob) return rec.blob;
+  if (rec && rec.src) { try { return await dataUrlToBlob(rec.src); } catch (_) {} }
+  const url = await remoteAssetUrl(a.id);
+  if (!url) return null;
+  try {
+    const res = await fetch(url); if (!res.ok) return null;
+    const blob = await res.blob();
+    put('originals', { id: a.id, blob });
+    return blob;
+  } catch (_) { return null; }
 }
 
-function addFileToCell(file, cellIdx) {
-  if (!file.type.startsWith('image/')) return;
-  if (file.size > 50 * 1024 * 1024) { alert('Image is too large (max 50 MB). Please resize it first.'); return; }
-  const r = new FileReader();
-  r.onload = async e => {
-    const ds = await downscale(e.target.result, 2400, file.type);
-    if (!ds.w || !ds.h) return;
-    const id = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random());
-    cacheDisplayBlob(id, file);
-    const a = { id, name: file.name, src: ds.src, w: ds.w, h: ds.h }; lib.push(a); put('assets', a);
-    placeAsset(cellIdx, id);   // place directly — no tray tap needed
-    renderTray();
-  };
-  r.readAsDataURL(file);
+/* Decoded full-size image for canvas work. Falls back to the thumbnail when the original
+   can't be had (offline, board gone) — a softer export beats a missing tile. */
+const fullImgs = {};
+async function loadFullImg(a) {
+  if (fullImgs[a.id]) return fullImgs[a.id];
+  const blob = await originalBlob(a);
+  if (!blob) return loadImg(displaySrc(a));
+  const url = URL.createObjectURL(blob);
+  try { fullImgs[a.id] = await loadImg(url); }
+  catch (_) { URL.revokeObjectURL(url); return loadImg(displaySrc(a)); }
+  return fullImgs[a.id];
+}
+
+/* Stores a fresh import: thumbnail on the asset record, full photo in `originals`.
+   Without IndexedDB there's nowhere to put the original, so it stays in memory. */
+function storeNewAsset(a, src) {
+  if (ok) { put('originals', { id: a.id, src }); put('assets', stripRuntime(a)); }
+  else a.src = src;
+  cacheDisplayBlob(a.id, a.thumb || src);
+}
+
+async function importFile(file) {
+  if (!file.type.startsWith('image/')) return null;
+  if (file.size > 50 * 1024 * 1024) { alert('Image is too large (max 50 MB). Please resize it first.'); return null; }
+  const dataURL = await new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = () => res(null); r.readAsDataURL(file); });
+  if (!dataURL) return null;
+  const ds = await downscale(dataURL, 2400, file.type, true);
+  if (!ds.w || !ds.h) return null;   // reject zero-dimension (failed decode)
+  const id = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random());
+  const a = { id, name: file.name, w: ds.w, h: ds.h, thumb: ds.thumb };
+  storeNewAsset(a, ds.src);
+  lib.push(a);
+  return a;
+}
+
+async function addFile(file) {
+  if (!await importFile(file)) return;
+  renderTray();
+  schedulePush();   // a tray-only add never reaches save(), so nudge sync directly
+}
+
+async function addFileToCell(file, cellIdx) {
+  const a = await importFile(file); if (!a) return;
+  placeAsset(cellIdx, a.id);   // place directly — no tray tap needed
+  renderTray();
+}
+
+/* Photos saved before thumbnails existed carry the full image inline on the asset record.
+   Split each one once — thumbnail stays, original moves to `originals` — so the next
+   launch is a fast one. Runs after the first paint, one photo at a time. */
+async function migrateLegacyAssets() {
+  const legacy = lib.filter(a => a.src && !a.thumb);
+  if (!legacy.length || !ok) return;
+  for (const a of legacy) {
+    const thumb = await thumbFrom(a.src);
+    if (!thumb) continue;
+    await put('originals', { id: a.id, src: a.src });
+    a.thumb = thumb; delete a.src;
+    await put('assets', stripRuntime(a));
+    cacheDisplayBlob(a.id, thumb);
+  }
+  render(); renderTray();
 }
 
 window.addEventListener('beforeunload', () => { Object.keys(blobCache).forEach(revokeBlobURL); });
@@ -1541,7 +1626,7 @@ function makeChip(a, used) {
   const x = document.createElement('button'); x.className = 'del'; x.textContent = '✕'; x.title = 'Remove this photo';
   x.addEventListener('click', e => {
     e.stopPropagation();
-    lib = lib.filter(l => l.id !== a.id); del('assets', a.id); revokeBlobURL(a.id);
+    lib = lib.filter(l => l.id !== a.id); del('assets', a.id); del('originals', a.id); revokeBlobURL(a.id);
     let touched = false;
     for (let j = 0; j < tiles.length; j++) if (tiles[j] && tiles[j].imgId === a.id) { tiles[j] = null; sel.delete(j); touched = true; }
     render(); updateExportUI(); if (touched) commit();
@@ -1701,7 +1786,7 @@ async function renderTileBlob(i, fmt) {
   const W = 1080, H = Math.round(1080 * RH / RW);
   canvas.width = W; canvas.height = H; const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-  const im = await loadImg(a.src); const p = place(t, a, W, H);
+  const im = await loadFullImg(a); const p = place(t, a, W, H);
   ctx.drawImage(im, p.left, p.top, p.w, p.h);
   return await new Promise(r => canvas.toBlob(r, fmt === 'jpg' ? 'image/jpeg' : 'image/png', fmt === 'jpg' ? 0.92 : undefined));
 }
@@ -2131,7 +2216,8 @@ async function renderProfileCanvas() {
     if (!t) { ctx.fillStyle = '#131314'; ctx.fillRect(x, ty, tileW, tileH); continue; }
     const a = lib.find(z => z.id === t.imgId);
     if (!a) { ctx.fillStyle = '#131314'; ctx.fillRect(x, ty, tileW, tileH); continue; }
-    let im; try { im = await loadImg(a.src); } catch (e) { continue; }
+    // a feed tile is ~320px wide, well inside the thumbnail — only a deep zoom needs the original
+    let im; try { im = (t.z || 1) > 2 ? await loadFullImg(a) : await loadImg(displaySrc(a)); } catch (e) { continue; }
     ctx.save(); ctx.beginPath(); ctx.rect(x, ty, tileW, tileH); ctx.clip();
     ctx.fillStyle = '#000'; ctx.fillRect(x, ty, tileW, tileH);
     const p = place(t, a, tileW, tileH, gExp);
@@ -2363,8 +2449,25 @@ let conflictShown = false;
    updates back and forth until they collide and report a conflict that isn't one. */
 let lastSyncedJson = null;
 
-/* IndexedDB records keep `path` but nothing else we hang off the object at runtime. */
-const stripRuntime = a => ({ id: a.id, name: a.name, src: a.src, w: a.w, h: a.h, path: a.path || null });
+/* What an `assets` record holds: metadata, the thumbnail Blob and where the board keeps
+   both copies. Never the full photo — that lives in `originals`. */
+const stripRuntime = a => ({ id: a.id, name: a.name, w: a.w, h: a.h, thumb: a.thumb || null,
+  path: a.path || null, thumbPath: a.thumbPath || null });
+
+/* Presigned board URLs for originals, refreshed by every pull. They last an hour; a pull
+   runs every 20s while the tab is visible, so a stale set only follows a long background. */
+let remoteUrls = {}, remoteUrlsAt = 0;
+const REMOTE_URL_FRESH = 45 * 60 * 1000;
+async function remoteAssetUrl(id) {
+  if (!board) return null;
+  if (!remoteUrls[id] || Date.now() - remoteUrlsAt > REMOTE_URL_FRESH) {
+    try {
+      const res = await api('GET', '/api/board?id=' + board.id);
+      if (res.ok && res.payload) { remoteUrls = res.payload.assetUrls || {}; remoteUrlsAt = Date.now(); }
+    } catch (_) {}
+  }
+  return remoteUrls[id] || null;
+}
 
 function setSync(state, text) {
   const el = $('syncStatus'); if (!el) return;
@@ -2407,62 +2510,102 @@ function serializeBoard() {
     rows, RW, RH,
     tiles,
     profile,
-    assets: lib.map(a => ({ id: a.id, name: a.name, w: a.w, h: a.h, path: a.path || null })),
+    assets: lib.map(a => ({ id: a.id, name: a.name, w: a.w, h: a.h, path: a.path || null, thumbPath: a.thumbPath || null })),
   };
 }
 
 const dataUrlToBlob = src => fetch(src).then(r => r.blob());
 const blobToDataUrl = b => new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(b); });
 
-/* Pushes any photo the server doesn't have yet. Runs before a save so the board JSON
-   we write only ever references assets that are actually fetchable. */
+async function uploadBlob(assetId, blob) {
+  const type = blob.type || 'image/jpeg';
+  const sign = await api('POST', '/api/upload-url?id=' + board.id,
+    { assetId, contentType: type, size: blob.size });
+  if (!sign.ok || !sign.payload || !sign.payload.url) return null;
+  const up = await fetch(sign.payload.url, { method: 'PUT', headers: { 'content-type': type }, body: blob });
+  return up.ok ? sign.payload.path : null;
+}
+
+/* Pushes any photo the server doesn't have yet — the original and, beside it under
+   `<id>.t`, its thumbnail, which is all other devices download up front. Runs before a
+   save so the board JSON we write only ever references assets that are actually fetchable. */
 async function uploadPendingAssets() {
-  const todo = lib.filter(a => !a.path && a.src);
-  for (const a of todo) {
+  for (const a of lib) {
+    if (a.path && (a.thumbPath || !a.thumb)) continue;
     try {
-      const blob = await dataUrlToBlob(a.src);
-      const type = blob.type || 'image/jpeg';
-      const sign = await api('POST', '/api/upload-url?id=' + board.id,
-        { assetId: a.id, contentType: type, size: blob.size });
-      if (!sign.ok || !sign.payload || !sign.payload.url) continue;
-      const up = await fetch(sign.payload.url, { method: 'PUT', headers: { 'content-type': type }, body: blob });
-      if (!up.ok) continue;
-      a.path = sign.payload.path;
-      put('assets', stripRuntime(a));
+      let changed = false;
+      if (!a.path) {
+        const blob = await originalBlob(a);
+        if (!blob) continue;
+        const path = await uploadBlob(a.id, blob);
+        if (!path) continue;
+        a.path = path; changed = true;
+      }
+      if (!a.thumbPath && a.thumb) {
+        const path = await uploadBlob(a.id + '.t', a.thumb);
+        if (path) { a.thumbPath = path; changed = true; }
+      }
+      if (changed) put('assets', stripRuntime(a));
     } catch (_) { /* retried on the next push */ }
   }
 }
 
-/* Pulls down any photo this device is missing, so a phone opening the link for the
-   first time fills in its own local cache and then works offline like any other device. */
-async function fetchMissingAssets(assets, urls) {
+/* Pulls down the thumbnail of any photo this device is missing, so a phone opening the
+   link for the first time can show the grid quickly; originals follow only when needed.
+   Boards uploaded before thumbnails existed have none — then the original comes down
+   once, gets cut to a thumbnail here, and is kept so it's never fetched again. */
+async function fetchMissingAssets(assets, urls, thumbUrls) {
+  urls = urls || {}; thumbUrls = thumbUrls || {};
   const have = new Set(lib.map(a => a.id));
-  const missing = (assets || []).filter(a => a && a.id && !have.has(a.id) && urls && urls[a.id]);
+  const missing = (assets || []).filter(a => a && a.id && !have.has(a.id) && (thumbUrls[a.id] || urls[a.id]));
   if (!missing.length) return 0;
-  let got = 0;
-  for (let i = 0; i < missing.length; i++) {
-    const meta = missing[i];
-    setSync('syncing', 'photos ' + (i + 1) + '/' + missing.length);
+  let got = 0, next = 0, done = 0;
+  setSync('syncing', 'photos 0/' + missing.length);
+  const one = async meta => {
     try {
-      const res = await fetch(urls[meta.id]);
-      if (!res.ok) continue;
-      const blob = await res.blob();
-      const asset = { id: meta.id, name: meta.name || 'photo', src: await blobToDataUrl(blob),
-        w: meta.w, h: meta.h, path: meta.path || null };
-      lib.push(asset); put('assets', stripRuntime(asset)); cacheDisplayBlob(asset.id, blob);
+      let thumb = null;
+      if (thumbUrls[meta.id]) {
+        const res = await fetch(thumbUrls[meta.id]);
+        if (res.ok) thumb = await res.blob();
+      }
+      if (!thumb && urls[meta.id]) {
+        const res = await fetch(urls[meta.id]);
+        if (!res.ok) return;
+        const full = await res.blob();
+        const u = URL.createObjectURL(full);
+        thumb = await thumbFrom(u);
+        URL.revokeObjectURL(u);
+        if (!thumb) return;
+        put('originals', { id: meta.id, blob: full });
+      }
+      if (!thumb) return;
+      // thumbPath stays empty when we cut the thumbnail ourselves, so the next push shares it
+      const asset = { id: meta.id, name: meta.name || 'photo', w: meta.w, h: meta.h, thumb,
+        path: meta.path || null, thumbPath: thumbUrls[meta.id] ? (meta.thumbPath || null) : null };
+      lib.push(asset); put('assets', stripRuntime(asset)); cacheDisplayBlob(asset.id, thumb);
       got++;
-    } catch (_) {}
-  }
+    } catch (_) {
+    } finally {
+      setSync('syncing', 'photos ' + (++done) + '/' + missing.length);
+    }
+  };
+  // a few at a time: thumbnails are small, so latency rather than bandwidth is the limit
+  const worker = async () => { while (next < missing.length) await one(missing[next++]); };
+  await Promise.all(Array.from({ length: Math.min(6, missing.length) }, worker));
   return got;
 }
 
-async function applyRemote(data, urls) {
+async function applyRemote(data, urls, thumbUrls) {
   if (!data) return;
   applyingRemote = true;
   try {
-    await fetchMissingAssets(data.assets, urls);
-    // keep local `path` knowledge in sync so we don't re-upload what's already there
-    (data.assets || []).forEach(m => { const a = lib.find(x => x.id === m.id); if (a && m.path) a.path = m.path; });
+    await fetchMissingAssets(data.assets, urls, thumbUrls);
+    // keep local path knowledge in sync so we don't re-upload what's already there
+    (data.assets || []).forEach(m => {
+      const a = lib.find(x => x.id === m.id); if (!a) return;
+      if (m.path) a.path = m.path;
+      if (m.thumbPath) a.thumbPath = m.thumbPath;
+    });
 
     if (data.RW && data.RH) {
       RW = data.RW; RH = data.RH;
@@ -2533,10 +2676,11 @@ async function pullNow(force) {
       return;
     }
     const p = res.payload;
+    remoteUrls = p.assetUrls || {}; remoteUrlsAt = Date.now();
     // rev only moves forward, so a newer rev means another device saved
     if (force || board.rev == null || p.rev > board.rev) {
       board.rev = p.rev;
-      if (p.data) await applyRemote(p.data, p.assetUrls);
+      if (p.data) await applyRemote(p.data, p.assetUrls, p.thumbUrls);
     }
     setSync('synced', 'synced');
   } catch (_) {
@@ -2666,7 +2810,7 @@ async function initSync() {
 (async function () {
   db = await openDB(); ok = !!db;
   if (ok) {
-    const a = await all('assets'); if (a.length) { lib = a; lib.forEach(asset => cacheDisplayBlob(asset.id, asset.src)); }
+    const a = await all('assets'); if (a.length) { lib = a; lib.forEach(asset => cacheDisplayBlob(asset.id, asset.thumb || asset.src)); }
     const st = (await all('state')).find(s => s.key === 'layout');
     if (st) { rows = Math.max(MIN_ROWS, st.rows || 3); total = rows * 3; if (st.RW && st.RH) { RW = st.RW; RH = st.RH; document.documentElement.style.setProperty('--ratio', RW + ' / ' + RH); } tiles = (st.tiles || []).map(t => t || null); while (tiles.length < total) tiles.push(null); const ids = new Set(lib.map(x => x.id)); tiles = tiles.map(t => { if (!t || !ids.has(t.imgId)) return null; t = demoteBanner(t); if (t.z == null) t.z = 1; delete t.mode; delete t.zoom; return t; }); $('ratioSeg').querySelectorAll('button').forEach(b => b.classList.toggle('active', parseInt(b.dataset.rw) === RW && parseInt(b.dataset.rh) === RH)); }
   }
@@ -2678,6 +2822,7 @@ async function initSync() {
   hist = []; pos = -1; commit();
   requestAnimationFrame(render);   // correct sizing once the stage has real dimensions
   initSync();                      // no-op unless a board link is already in play
+  migrateLegacyAssets();           // one-time: split pre-thumbnail photos into thumb + original
 })();
 </script>
 </body>

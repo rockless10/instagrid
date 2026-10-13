@@ -101,7 +101,7 @@ Click any tile — or its **✎** — to write that post's caption in a popup, w
 Press **⇅ SYNC** to create a shared board. You get one secret link; open it on your phone and you have the same grid, with edits flowing both ways. Local storage stays the working copy, so the app is instant and keeps working offline, syncing when it reconnects. Simultaneous edits are caught by an ETag check and surface as a *keep mine / load theirs* prompt rather than silently overwriting. This is the only feature that uploads anything — see [Privacy](#privacy).
 
 ### Local-First Persistence
-Your work auto-saves to **IndexedDB** — in your browser, on your device — and is restored on reload. Degrades gracefully to memory-only where storage is blocked.
+Your work auto-saves to **IndexedDB** — in your browser, on your device — and is restored on reload. Degrades gracefully to memory-only where storage is blocked. The grid and tray draw from small thumbnails, so reopening the app stays quick however many photos you've imported; the full-size originals are only read for export and **Download original**. On a shared board, a new device downloads just the thumbnails and fetches each original the first time it's needed.
 
 ### Plus
 Undo / redo with keyboard shortcuts, downscale-on-import to keep things fast, and a fully responsive layout that works on desktop and mobile.

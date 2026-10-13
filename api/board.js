@@ -1,7 +1,7 @@
 /* /api/board — create, read, save and re-key a board.
 
    POST                  → mint a new board, returns { id, secret }
-   GET   ?id=…           → { rev, updatedAt, data, assetUrls }
+   GET   ?id=…           → { rev, updatedAt, data, assetUrls, thumbUrls }
    PUT   ?id=…           → save; body { rev, data } → { rev }, or 409 if rev is stale
    PATCH ?id=…           → rotate the secret, returns { secret }
 
@@ -30,28 +30,26 @@ async function getReadToken() {
 }
 
 /* Presigned GET URLs let the browser pull photos straight from the CDN instead of
-   streaming every byte back through this function. */
+   streaming every byte back through this function. Each photo can have two blobs: the
+   original at <assetId> and a small display thumbnail at <assetId>.t — devices download
+   the thumbnails up front and an original only when they need its full pixels. */
 async function assetUrls(id, data) {
-  const assets = (data && Array.isArray(data.assets)) ? data.assets : [];
-  const withPath = assets.filter(a => a && a.id && a.path);
-  if (!withPath.length) return {};
+  const assets = (data && Array.isArray(data.assets)) ? data.assets.filter(a => a && a.id) : [];
+  const full = {}, thumb = {};
+  if (!assets.some(a => a.path || a.thumbPath)) return { full, thumb };
 
   const token = await getReadToken();
   const validUntil = Math.min(Date.now() + ASSET_URL_TTL, readTokenUntil);
+  const sign = async pathname => (await presignUrl(token, {
+    operation: 'get', pathname, access: 'private', validUntil,
+  })).presignedUrl;
 
-  const out = {};
-  await Promise.all(withPath.map(async a => {
-    try {
-      const { presignedUrl } = await presignUrl(token, {
-        operation: 'get',
-        pathname: assetPath(id, a.id),
-        access: 'private',
-        validUntil,
-      });
-      out[a.id] = presignedUrl;
-    } catch { /* a missing asset shouldn't sink the whole board load */ }
+  await Promise.all(assets.map(async a => {
+    // a missing asset shouldn't sink the whole board load
+    if (a.path) { try { full[a.id] = await sign(assetPath(id, a.id)); } catch {} }
+    if (a.thumbPath) { try { thumb[a.id] = await sign(assetPath(id, a.id + '.t')); } catch {} }
   }));
-  return out;
+  return { full, thumb };
 }
 
 export default async function handler(req, res) {
@@ -81,12 +79,14 @@ export default async function handler(req, res) {
     const found = await authBoard(req, res, id);
     if (found.denied) return;
     const { board, etag } = found;
+    const urls = await assetUrls(id, board.data);
     return json(res, {
       rev: board.rev || 1,
       etag,
       updatedAt: board.updatedAt || null,
       data: board.data || null,
-      assetUrls: await assetUrls(id, board.data),
+      assetUrls: urls.full,
+      thumbUrls: urls.thumb,
     });
   }
 
