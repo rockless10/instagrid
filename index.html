@@ -869,10 +869,12 @@ function openDB() {
     // the app already degrades to memory-only when this resolves null.
     let done = false;
     const finish = v => { if (!done) { done = true; res(v); } };
-    /* v2 adds `meta`: one small record per photo (name, size, sync paths and a light
+    /* v3 adds `meta`: one small record per photo (name, size, sync paths and a light
        thumbnail). Startup reads only that store, so opening the app never has to pull
-       every full-resolution photo out of `assets` before the grid can paint. */
-    let r; try { r = indexedDB.open('gridctrl_mvp', 2); } catch (e) { return finish(null); }
+       every full-resolution photo out of `assets` before the grid can paint.
+       (v2 was a short-lived build that kept full photos in an `originals` store instead;
+       the startup migration folds those back into `assets`.) */
+    let r; try { r = indexedDB.open('gridctrl_mvp', 3); } catch (e) { return finish(null); }
     r.onupgradeneeded = e => { const d = e.target.result; if (!d.objectStoreNames.contains('assets')) d.createObjectStore('assets', { keyPath: 'id' }); if (!d.objectStoreNames.contains('state')) d.createObjectStore('state', { keyPath: 'key' }); if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'id' }); };
     r.onsuccess = () => { const d = r.result; d.onversionchange = () => d.close(); finish(d); };
     r.onerror = () => finish(null);
@@ -2804,10 +2806,19 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
     const onDisk = new Set(fullKeys), known = new Set(metas.map(m => m.id));
     lib = metas.map(m => Object.assign(m, { local: onDisk.has(m.id) }));
     // one-time upgrade: photos saved before `meta` existed get a record now and a thumb in backfill()
+    const hasOriginals = db.objectStoreNames.contains('originals');
     for (const k of fullKeys) {
       if (known.has(k)) continue;
       const rec = await getOne('assets', k); if (!rec) continue;
-      const a = { id: rec.id, name: rec.name || 'photo', w: rec.w, h: rec.h, path: rec.path || null, thumbPath: null, thumb: null, local: true };
+      const a = { id: rec.id, name: rec.name || 'photo', w: rec.w, h: rec.h, path: rec.path || null,
+        thumbPath: rec.thumbPath || null, thumb: rec.thumb || null, local: !!rec.src };
+      if (!rec.src && hasOriginals) {
+        // v2 layout: `assets` held only the thumb, the full photo sat in `originals`
+        const orig = await getOne('originals', k);
+        const src = orig && (orig.src || (orig.blob ? await blobToDataUrl(orig.blob) : null));
+        if (src && await saveFull(a, src)) { a.local = true; del('originals', k); }
+      }
+      if (!a.local && !rec.thumb) continue;   // nothing left to show for it
       lib.push(a); saveMeta(a);
     }
     const st = (await all('state')).find(s => s.key === 'layout');
