@@ -62,7 +62,7 @@
    <h2>SHARED_BOARDS</h2>
    <p>The SYNC button creates a board so the same grid opens on your other devices. Here is precisely what changes when you use it:</p>
    <ul>
-     <li>Your photos are uploaded to a <strong>private</strong> object store and can only be read back through this site’s own API, using the board secret.</li>
+     <li>Your photos — plus a small preview copy of each, so the other device can show the grid quickly — are uploaded to a <strong>private</strong> object store and can only be read back through this site’s own API, using the board secret.</li>
      <li>Your layout, captions and profile mockup are stored alongside them as a small JSON file.</li>
      <li>The board is identified by a secret link. <strong>Anyone holding that link can read and edit the board</strong> — treat it like a password, and don’t post it anywhere public.</li>
      <li>The secret lives in the URL fragment, which browsers never send to a server, so it stays out of access logs. It is stored only as a hash on our side.</li>

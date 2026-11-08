@@ -869,9 +869,12 @@ function openDB() {
     // the app already degrades to memory-only when this resolves null.
     let done = false;
     const finish = v => { if (!done) { done = true; res(v); } };
-    let r; try { r = indexedDB.open('gridctrl_mvp', 1); } catch (e) { return finish(null); }
-    r.onupgradeneeded = e => { const d = e.target.result; if (!d.objectStoreNames.contains('assets')) d.createObjectStore('assets', { keyPath: 'id' }); if (!d.objectStoreNames.contains('state')) d.createObjectStore('state', { keyPath: 'key' }); };
-    r.onsuccess = () => finish(r.result);
+    /* v2 adds `meta`: one small record per photo (name, size, sync paths and a light
+       thumbnail). Startup reads only that store, so opening the app never has to pull
+       every full-resolution photo out of `assets` before the grid can paint. */
+    let r; try { r = indexedDB.open('gridctrl_mvp', 2); } catch (e) { return finish(null); }
+    r.onupgradeneeded = e => { const d = e.target.result; if (!d.objectStoreNames.contains('assets')) d.createObjectStore('assets', { keyPath: 'id' }); if (!d.objectStoreNames.contains('state')) d.createObjectStore('state', { keyPath: 'key' }); if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'id' }); };
+    r.onsuccess = () => { const d = r.result; d.onversionchange = () => d.close(); finish(d); };
     r.onerror = () => finish(null);
     r.onblocked = () => finish(null);
     setTimeout(() => finish(null), 4000);
@@ -880,6 +883,8 @@ function openDB() {
 const put = (s, v) => new Promise(res => { if (!db) return res(); try { const t = db.transaction(s, 'readwrite'); t.objectStore(s).put(v); t.oncomplete = res; t.onerror = () => { console.error('instagrid: save failed', t.error); res(); }; } catch (e) { console.error('instagrid: save error', e); res(); } });
 const del = (s, k) => new Promise(res => { if (!db) return res(); try { const t = db.transaction(s, 'readwrite'); t.objectStore(s).delete(k); t.oncomplete = res; t.onerror = res; } catch (e) { res(); } });
 const all = s => new Promise(res => { if (!db) return res([]); try { const t = db.transaction(s, 'readonly'); const q = t.objectStore(s).getAll(); q.onsuccess = () => res(q.result || []); q.onerror = () => res([]); } catch (e) { res([]); } });
+const getOne = (s, k) => new Promise(res => { if (!db) return res(null); try { const t = db.transaction(s, 'readonly'); const q = t.objectStore(s).get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); } catch (e) { res(null); } });
+const allKeys = s => new Promise(res => { if (!db) return res([]); try { const t = db.transaction(s, 'readonly'); const q = t.objectStore(s).getAllKeys(); q.onsuccess = () => res(q.result || []); q.onerror = () => res([]); } catch (e) { res([]); } });
 let saveT = null;
 /* schedulePush() sits outside the `ok` guard on purpose: local persistence and cloud
    sync are independent, and a browser that blocks IndexedDB must still sync. */
@@ -934,6 +939,7 @@ function render() {
   ensureTrailingRow();
   fitStage();
   const d = dims();
+  if (hiObserver) hiObserver.disconnect();   // the old tiles are about to go
   grid.innerHTML = '';
   for (let i = 0; i < total; i++) {
     const t = tiles[i];
@@ -963,7 +969,7 @@ function render() {
       const a = lib.find(x => x.id === t.imgId);
       if (a) {
         cell.classList.add('has');
-        setImgSrc(img, a); img.alt = a.name ? `Grid tile: ${a.name}` : 'Grid tile image'; applyImg(img, t, a, d); plus.style.display = 'none';
+        setImgSrc(img, a, true); img.alt = a.name ? `Grid tile: ${a.name}` : 'Grid tile image'; applyImg(img, t, a, d); plus.style.display = 'none';
         const rm = mkBtn('✕', () => { tiles[i] = null; sel.delete(i); if (active === i) active = null; render(); updateExportUI(); syncZoom(); commit(); });
         tools.append(rm, capBtn(i));
         if (t.cap) cell.classList.add('has-cap');
@@ -1008,7 +1014,7 @@ function buildRowGhost(r) {
     const t = tiles[r * 3 + j];
     const c = document.createElement('div'); c.className = 'row-ghost-cell';
     c.style.aspectRatio = `${RW}/${RH}`;
-    if (t) { const a = lib.find(x => x.id === t.imgId); if (a) { const im = document.createElement('img'); im.src = displaySrc(a); c.appendChild(im); } }
+    if (t) { const a = lib.find(x => x.id === t.imgId); if (a) { const im = document.createElement('img'); setImgSrc(im, a); c.appendChild(im); } }
     rowGhost.appendChild(c);
   }
 }
@@ -1202,11 +1208,11 @@ async function copyCaption() {
 async function downloadCaptionPhoto() {
   if (capTarget == null) return;
   const t = tiles[capTarget]; if (!t) return;
-  const a = lib.find(x => x.id === t.imgId); if (!a || !a.src) return;
+  const a = lib.find(x => x.id === t.imgId); if (!a) return;
   const b = $('capDownload');
   b.disabled = true; b.textContent = 'Preparing…';
   let blob = null;
-  try { blob = await dataUrlToBlob(a.src); } catch (_) {}
+  try { const src = await fullSrc(a); if (src) blob = await dataUrlToBlob(src); } catch (_) {}
   b.textContent = CAP_DL_LABEL; b.disabled = false;
   if (!blob) return;
   // keep the imported filename; fall back to the blob's own type when it carries no extension
@@ -1422,69 +1428,207 @@ function downscale(dataURL, maxSide, mime) {
     im.src = dataURL;
   });
 }
-const blobCache = {};   // imgId → blobURL (in-memory, for iOS display)
+/* Every photo exists at two weights.
+   - thumb: a ~480px JPEG kept in the small `meta` store and in memory. The grid, tray,
+     drag ghosts and previews all paint from it the instant the app opens.
+   - full:  the imported photo (up to 2400px) in `assets`. It is never bulk-loaded. Grid
+     tiles near the viewport upgrade to it in the background, a couple at a time, and
+     export / download read it on demand. */
+const THUMB_SIDE = 480, HI_CONCURRENCY = 2;
+const blobCache = {};    // imgId → blob URL of the full photo, once a tile has upgraded
+const remoteUrls = {};   // imgId → { full, thumb } presigned URLs from the latest board pull
 
-function cacheDisplayBlob(id, source) {
-  if (!id || !source) return;
-  if (blobCache[id]) { try { URL.revokeObjectURL(blobCache[id]); } catch (_) {} }
+const newId = () => (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random().toString(36).slice(2));
+
+function makeThumb(src) {
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => {
+      const iw = im.naturalWidth, ih = im.naturalHeight, big = Math.max(iw, ih);
+      if (!big) return res(null);
+      const sc = Math.min(1, THUMB_SIDE / big), w = Math.max(1, Math.round(iw * sc)), h = Math.max(1, Math.round(ih * sc));
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const ctx = c.getContext('2d'); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(im, 0, 0, w, h);
+      try { res(c.toDataURL('image/jpeg', 0.72)); } catch (_) { res(null); }
+    };
+    im.onerror = () => res(null);
+    im.src = src;
+  });
+}
+
+const metaRecord = a => ({ id: a.id, name: a.name, w: a.w, h: a.h, path: a.path || null, thumbPath: a.thumbPath || null, thumb: a.thumb || null });
+const saveMeta = a => put('meta', metaRecord(a));
+/* resolves true only once the full photo is really on disk, so it is safe to drop it from memory */
+const saveFull = (a, src) => new Promise(res => {
+  if (!db) return res(false);
   try {
-    if (source instanceof Blob || source instanceof File) {
-      blobCache[id] = URL.createObjectURL(source);
-    } else if (typeof source === 'string' && source.startsWith('data:')) {
-      const [head, data] = source.split(',');
-      const m = head && head.match(/:(.*?);/); if (!m) return;
-      const bytes = atob(data);
-      const arr = new Uint8Array(bytes.length);
-      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-      blobCache[id] = URL.createObjectURL(new Blob([arr], { type: m[1] }));
+    const t = db.transaction('assets', 'readwrite');
+    t.objectStore('assets').put({ id: a.id, name: a.name, src, w: a.w, h: a.h });
+    t.oncomplete = () => res(true);
+    t.onerror = () => { console.error('instagrid: save failed', t.error); res(false); };
+  } catch (e) { console.error('instagrid: save error', e); res(false); }
+});
+
+/* The full photo as a data URL: memory (fresh import, or no IndexedDB) → IndexedDB →
+   the shared board. A photo pulled from the board is written locally, so after one
+   visit the device works offline. Nothing here holds on to the result. */
+const fullPending = {};
+function fullSrc(a) {
+  if (a.src) return Promise.resolve(a.src);
+  if (fullPending[a.id]) return fullPending[a.id];
+  const p = (async () => {
+    if (a.local !== false) {
+      const rec = await getOne('assets', a.id);
+      if (rec && rec.src) { a.local = true; return rec.src; }
     }
-  } catch (_) {}
+    const url = remoteUrls[a.id] && remoteUrls[a.id].full;
+    if (!url) return null;
+    try {
+      const res = await fetch(url); if (!res.ok) return null;
+      const src = await blobToDataUrl(await res.blob());
+      if (await saveFull(a, src)) a.local = true; else a.src = src;   // memory-only browser: keep it
+      return src;
+    } catch (_) { return null; }
+  })();
+  fullPending[a.id] = p;
+  p.then(() => { delete fullPending[a.id]; });
+  return p;
 }
 
 function revokeBlobURL(id) {
   if (blobCache[id]) { try { URL.revokeObjectURL(blobCache[id]); } catch (_) {} delete blobCache[id]; }
 }
 
-function displaySrc(a) { return blobCache[a.id] || a.src; }
-
-function setImgSrc(img, a) {
-  img.src = displaySrc(a);
-  img.onerror = () => { if (img.src !== a.src) { img.src = a.src; img.onerror = null; } };
+/* `hi` images (grid tiles) prefer the full photo; everything else stays on the thumb. */
+function displaySrc(a, hi) {
+  return hi ? (blobCache[a.id] || a.thumb || a.src || '') : (a.thumb || blobCache[a.id] || a.src || '');
 }
 
-function addFile(file) {
+function setImgSrc(img, a, hi) {
+  img.dataset.aid = a.id;
+  if (hi) img.dataset.hi = '1'; else delete img.dataset.hi;
+  img.decoding = 'async';
+  const s = displaySrc(a, hi);
+  if (s) img.src = s; else img.removeAttribute('src');
+  img.onerror = () => {
+    // a dead blob URL (e.g. after a back/forward-cache restore) — drop back to the thumb and refetch
+    if (blobCache[a.id] && img.src === blobCache[a.id]) {
+      revokeBlobURL(a.id);
+      const f = displaySrc(a, hi); if (f) img.src = f; else img.removeAttribute('src');
+      if (hi) wantFull(a);
+    }
+  };
+  if (hi && !blobCache[a.id]) observeHi(img, a);
+}
+
+/* point every <img> showing this photo at the best version we now have */
+function refreshImgs(id) {
+  const a = lib.find(x => x.id === id); if (!a) return;
+  document.querySelectorAll('img[data-aid="' + CSS.escape(id) + '"]').forEach(img => {
+    const s = displaySrc(a, img.dataset.hi === '1');
+    if (s && img.getAttribute('src') !== s) img.src = s;
+  });
+}
+
+/* ---- background full-res loader: visible tiles first, two at a time ---- */
+const hiQueue = [], hiQueued = new Set();
+let hiActive = 0;
+const hiObserver = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
+  entries.forEach(en => {
+    const id = en.target.dataset.aid; if (!id) return;
+    if (en.isIntersecting) {
+      hiObserver.unobserve(en.target);
+      const a = lib.find(x => x.id === id); if (a) wantFull(a);
+    } else {
+      // scrolled away before its turn came — let what's on screen go first
+      const k = hiQueue.indexOf(id); if (k >= 0) { hiQueue.splice(k, 1); hiQueued.delete(id); }
+    }
+  });
+}, { rootMargin: '300px 0px' }) : null;
+
+function observeHi(img, a) { if (hiObserver) hiObserver.observe(img); else wantFull(a); }
+
+function wantFull(a) {
+  if (blobCache[a.id] || hiQueued.has(a.id)) return;
+  hiQueued.add(a.id); hiQueue.push(a.id); pumpHi();
+}
+function pumpHi() {
+  while (hiActive < HI_CONCURRENCY && hiQueue.length) {
+    const id = hiQueue.shift(); hiActive++;
+    loadHi(id).catch(() => {}).then(() => { hiActive--; hiQueued.delete(id); pumpHi(); });
+  }
+}
+async function loadHi(id) {
+  const a = lib.find(x => x.id === id); if (!a || blobCache[id]) return;
+  const src = await fullSrc(a); if (!src || !lib.includes(a)) return;
+  if (!a.thumb) { a.thumb = await makeThumb(src); if (a.thumb) saveMeta(a); }
+  const url = URL.createObjectURL(await dataUrlToBlob(src));
+  const pre = new Image(); pre.src = url;
+  try { await pre.decode(); } catch (_) {}   // decode off the main thread before swapping it in
+  if (!lib.includes(a)) { URL.revokeObjectURL(url); return; }
+  revokeBlobURL(id); blobCache[id] = url;
+  refreshImgs(id);
+}
+
+/* ---- backfill: thumbs that don't exist yet, then a local copy of every board photo ----
+   Runs after the first paint and again after each board pull; never blocks rendering. */
+let backfillRunning = false, backfillAgain = false;
+async function backfill() {
+  if (backfillRunning) { backfillAgain = true; return; }
+  backfillRunning = true;
+  try {
+    do {
+      backfillAgain = false;
+      // 1. thumbs another device already uploaded — small, so several at once
+      const remote = lib.filter(a => !a.thumb && remoteUrls[a.id] && remoteUrls[a.id].thumb);
+      await pool(remote, 4, async a => {
+        try {
+          const res = await fetch(remoteUrls[a.id].thumb); if (!res.ok) return;
+          a.thumb = await blobToDataUrl(await res.blob()); saveMeta(a); refreshImgs(a.id);
+        } catch (_) {}
+      });
+      // 2. thumbs we have to make ourselves (photos saved before thumbs existed, or old boards)
+      for (const a of lib.filter(x => !x.thumb)) {
+        const src = await fullSrc(a); if (!src || !lib.includes(a) || a.thumb) continue;
+        a.thumb = await makeThumb(src); if (a.thumb) { saveMeta(a); refreshImgs(a.id); }
+      }
+      // 3. keep a local copy of every board photo so this device works offline
+      const fetchAll = lib.filter(a => a.local === false && remoteUrls[a.id] && remoteUrls[a.id].full);
+      for (let i = 0; i < fetchAll.length; i++) {
+        if (board && !conflictShown) setSync('syncing', 'photos ' + (i + 1) + '/' + fetchAll.length);
+        await fullSrc(fetchAll[i]);
+      }
+      if (fetchAll.length && board && !conflictShown) setSync('synced', 'synced');
+    } while (backfillAgain);
+  } finally { backfillRunning = false; }
+}
+async function pool(items, n, fn) {
+  let k = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (k < items.length) await fn(items[k++]); }));
+}
+
+/* Imports run one at a time: decoding a dozen 12MP photos at once is what stalls phones. */
+let importChain = Promise.resolve();
+function importFile(file, cellIdx) {
   if (!file.type.startsWith('image/')) return;
   if (file.size > 50 * 1024 * 1024) { alert('Image is too large (max 50 MB). Please resize it first.'); return; }
-  const r = new FileReader();
-  r.onload = async e => {
-    const ds = await downscale(e.target.result, 2400, file.type);
-    if (!ds.w || !ds.h) return;   // reject zero-dimension (failed decode)
-    const id = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random());
-    cacheDisplayBlob(id, file);   // use original File — no size limit on iOS
-    const a = { id, name: file.name, src: ds.src, w: ds.w, h: ds.h }; lib.push(a); put('assets', a); renderTray();
-    schedulePush();   // a tray-only add never reaches save(), so nudge sync directly
-  };
-  r.readAsDataURL(file);
+  importChain = importChain.then(() => importOne(file, cellIdx)).catch(e => console.error('instagrid: import failed', e));
 }
-
-function addFileToCell(file, cellIdx) {
-  if (!file.type.startsWith('image/')) return;
-  if (file.size > 50 * 1024 * 1024) { alert('Image is too large (max 50 MB). Please resize it first.'); return; }
-  const r = new FileReader();
-  r.onload = async e => {
-    const ds = await downscale(e.target.result, 2400, file.type);
-    if (!ds.w || !ds.h) return;
-    const id = (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + '-' + Math.random());
-    cacheDisplayBlob(id, file);
-    const a = { id, name: file.name, src: ds.src, w: ds.w, h: ds.h }; lib.push(a); put('assets', a);
-    placeAsset(cellIdx, id);   // place directly — no tray tap needed
-    renderTray();
-  };
-  r.readAsDataURL(file);
+async function importOne(file, cellIdx) {
+  const dataURL = await new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = () => res(null); r.readAsDataURL(file); });
+  if (!dataURL) return;
+  const ds = await downscale(dataURL, 2400, file.type);
+  if (!ds.w || !ds.h) return;   // reject zero-dimension (failed decode)
+  const a = { id: newId(), name: file.name, src: ds.src, w: ds.w, h: ds.h, thumb: await makeThumb(ds.src) };
+  lib.push(a); saveMeta(a);
+  saveFull(a, ds.src).then(stored => { if (stored) { a.local = true; delete a.src; } });
+  if (cellIdx != null) placeAsset(cellIdx, a.id);   // place directly — no tray tap needed
+  renderTray();
+  schedulePush();   // a tray-only add never reaches save(), so nudge sync directly
 }
-
-window.addEventListener('beforeunload', () => { Object.keys(blobCache).forEach(revokeBlobURL); });
-window.addEventListener('pagehide', () => { Object.keys(blobCache).forEach(revokeBlobURL); });
+const addFile = file => importFile(file);
+const addFileToCell = (file, cellIdx) => importFile(file, cellIdx);
 /* The tray splits by whether a photo is already in the grid, so a long import stays
    readable: FRESH is the work queue, USED is what's already placed. Both are derived
    from `tiles` on every render — nothing extra is stored or synced. */
@@ -1497,7 +1641,7 @@ function makeChip(a, used) {
   const x = document.createElement('button'); x.className = 'del'; x.textContent = '✕'; x.title = 'Remove this photo';
   x.addEventListener('click', e => {
     e.stopPropagation();
-    lib = lib.filter(l => l.id !== a.id); del('assets', a.id); revokeBlobURL(a.id);
+    lib = lib.filter(l => l.id !== a.id); del('assets', a.id); del('meta', a.id); revokeBlobURL(a.id);
     let touched = false;
     for (let j = 0; j < tiles.length; j++) if (tiles[j] && tiles[j].imgId === a.id) { tiles[j] = null; sel.delete(j); touched = true; }
     render(); updateExportUI(); if (touched) commit();
@@ -1530,6 +1674,7 @@ document.querySelectorAll('.drawer-h').forEach(h => h.addEventListener('click', 
   const key = h.parentElement.id === 'drawerUsed' ? 'used' : 'fresh';
   drawerOpen[key] = !drawerOpen[key];
   renderTray();
+  saveUiSoon();
 }));
 
 /* ---------- zoom ui ---------- */
@@ -1623,7 +1768,7 @@ function openExportPreview() {
   list.forEach(i => {
     const t = tiles[i]; if (!t) return; const a = lib.find(x => x.id === t.imgId); if (!a) return;
     const cell = document.createElement('div'); cell.className = 'pv';
-    const img = document.createElement('img'); img.src = displaySrc(a); const p = place(t, a, PW, PH, GAP);
+    const img = document.createElement('img'); setImgSrc(img, a); const p = place(t, a, PW, PH, GAP);
     img.style.width = p.w + 'px'; img.style.height = p.h + 'px'; img.style.left = p.left + 'px'; img.style.top = p.top + 'px';
     cell.appendChild(img); preview.appendChild(cell);
   });
@@ -1655,7 +1800,8 @@ async function renderTileBlob(i, fmt) {
   const W = 1080, H = Math.round(1080 * RH / RW);
   canvas.width = W; canvas.height = H; const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-  const im = await loadImg(a.src); const p = place(t, a, W, H);
+  const src = await fullSrc(a); if (!src) return null;
+  const im = await loadImg(src); const p = place(t, a, W, H);
   ctx.drawImage(im, p.left, p.top, p.w, p.h);
   return await new Promise(r => canvas.toBlob(r, fmt === 'jpg' ? 'image/jpeg' : 'image/png', fmt === 'jpg' ? 0.92 : undefined));
 }
@@ -2069,7 +2215,7 @@ async function renderProfileCanvas() {
     if (!t) { ctx.fillStyle = '#131314'; ctx.fillRect(x, ty, tileW, tileH); continue; }
     const a = lib.find(z => z.id === t.imgId);
     if (!a) { ctx.fillStyle = '#131314'; ctx.fillRect(x, ty, tileW, tileH); continue; }
-    let im; try { im = await loadImg(a.src); } catch (e) { continue; }
+    let im; try { im = await loadImg(await fullSrc(a)); } catch (e) { continue; }
     ctx.save(); ctx.beginPath(); ctx.rect(x, ty, tileW, tileH); ctx.clip();
     ctx.fillStyle = '#000'; ctx.fillRect(x, ty, tileW, tileH);
     const p = place(t, a, tileW, tileH, gExp);
@@ -2301,8 +2447,6 @@ let conflictShown = false;
    updates back and forth until they collide and report a conflict that isn't one. */
 let lastSyncedJson = null;
 
-/* IndexedDB records keep `path` but nothing else we hang off the object at runtime. */
-const stripRuntime = a => ({ id: a.id, name: a.name, src: a.src, w: a.w, h: a.h, path: a.path || null });
 
 function setSync(state, text) {
   const el = $('syncStatus'); if (!el) return;
@@ -2345,7 +2489,7 @@ function serializeBoard() {
     rows, RW, RH,
     tiles,
     profile,
-    assets: lib.map(a => ({ id: a.id, name: a.name, w: a.w, h: a.h, path: a.path || null })),
+    assets: lib.map(a => ({ id: a.id, name: a.name, w: a.w, h: a.h, path: a.path || null, thumbPath: a.thumbPath || null })),
   };
 }
 
@@ -2353,54 +2497,66 @@ const dataUrlToBlob = src => fetch(src).then(r => r.blob());
 const blobToDataUrl = b => new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(b); });
 
 /* Pushes any photo the server doesn't have yet. Runs before a save so the board JSON
-   we write only ever references assets that are actually fetchable. */
-async function uploadPendingAssets() {
-  const todo = lib.filter(a => !a.path && a.src);
-  for (const a of todo) {
+   we write only ever references assets that are actually fetchable. Thumbs go up first
+   and on their own (`<id>.t`): they're tiny, so the other device can paint the whole grid
+   long before the full photos land. */
+async function uploadAsset(assetId, blob) {
+  const type = blob.type || 'image/jpeg';
+  const sign = await api('POST', '/api/upload-url?id=' + board.id, { assetId, contentType: type, size: blob.size });
+  if (!sign.ok || !sign.payload || !sign.payload.url) return null;
+  const up = await fetch(sign.payload.url, { method: 'PUT', headers: { 'content-type': type }, body: blob });
+  return up.ok ? sign.payload.path : null;
+}
+async function uploadPendingThumbs() {
+  for (const a of lib.filter(x => !x.thumbPath && x.thumb)) {
     try {
-      const blob = await dataUrlToBlob(a.src);
-      const type = blob.type || 'image/jpeg';
-      const sign = await api('POST', '/api/upload-url?id=' + board.id,
-        { assetId: a.id, contentType: type, size: blob.size });
-      if (!sign.ok || !sign.payload || !sign.payload.url) continue;
-      const up = await fetch(sign.payload.url, { method: 'PUT', headers: { 'content-type': type }, body: blob });
-      if (!up.ok) continue;
-      a.path = sign.payload.path;
-      put('assets', stripRuntime(a));
+      const path = await uploadAsset(a.id + '.t', await dataUrlToBlob(a.thumb));
+      if (path) { a.thumbPath = path; saveMeta(a); }
     } catch (_) { /* retried on the next push */ }
   }
 }
-
-/* Pulls down any photo this device is missing, so a phone opening the link for the
-   first time fills in its own local cache and then works offline like any other device. */
-async function fetchMissingAssets(assets, urls) {
-  const have = new Set(lib.map(a => a.id));
-  const missing = (assets || []).filter(a => a && a.id && !have.has(a.id) && urls && urls[a.id]);
-  if (!missing.length) return 0;
-  let got = 0;
-  for (let i = 0; i < missing.length; i++) {
-    const meta = missing[i];
-    setSync('syncing', 'photos ' + (i + 1) + '/' + missing.length);
+async function uploadPendingAssets() {
+  let n = 0;
+  for (const a of lib.filter(x => !x.path && (x.src || x.local))) {
     try {
-      const res = await fetch(urls[meta.id]);
-      if (!res.ok) continue;
-      const blob = await res.blob();
-      const asset = { id: meta.id, name: meta.name || 'photo', src: await blobToDataUrl(blob),
-        w: meta.w, h: meta.h, path: meta.path || null };
-      lib.push(asset); put('assets', stripRuntime(asset)); cacheDisplayBlob(asset.id, blob);
-      got++;
-    } catch (_) {}
+      const src = await fullSrc(a); if (!src) continue;
+      const path = await uploadAsset(a.id, await dataUrlToBlob(src));
+      if (path) { a.path = path; saveMeta(a); n++; }
+    } catch (_) { /* retried on the next push */ }
   }
-  return got;
+  return n;
 }
 
-async function applyRemote(data, urls) {
+function setRemoteUrls(urls, thumbUrls) {
+  Object.keys(urls || {}).forEach(id => { (remoteUrls[id] = remoteUrls[id] || {}).full = urls[id]; });
+  Object.keys(thumbUrls || {}).forEach(id => { (remoteUrls[id] = remoteUrls[id] || {}).thumb = thumbUrls[id]; });
+}
+
+/* Board photos this device has never seen join the library as metadata straight away, so
+   the layout renders immediately; thumbs and full photos stream in behind it (backfill). */
+function adoptRemoteAssets(assets) {
+  (assets || []).forEach(m => {
+    if (!m || !m.id) return;
+    const a = lib.find(x => x.id === m.id);
+    if (a) {
+      let dirty = false;
+      if (m.path && a.path !== m.path) { a.path = m.path; dirty = true; }
+      if (m.thumbPath && a.thumbPath !== m.thumbPath) { a.thumbPath = m.thumbPath; dirty = true; }
+      if (dirty) saveMeta(a);
+      return;
+    }
+    if (!remoteUrls[m.id]) return;   // nothing we could ever fetch it from
+    const n = { id: m.id, name: m.name || 'photo', w: m.w, h: m.h, path: m.path || null, thumbPath: m.thumbPath || null, thumb: null, local: false };
+    lib.push(n); saveMeta(n);
+  });
+}
+
+async function applyRemote(data) {
   if (!data) return;
   applyingRemote = true;
   try {
-    await fetchMissingAssets(data.assets, urls);
-    // keep local `path` knowledge in sync so we don't re-upload what's already there
-    (data.assets || []).forEach(m => { const a = lib.find(x => x.id === m.id); if (a && m.path) a.path = m.path; });
+    // also keeps local `path` knowledge in sync so we don't re-upload what's already there
+    adoptRemoteAssets(data.assets);
 
     if (data.RW && data.RH) {
       RW = data.RW; RH = data.RH;
@@ -2425,6 +2581,7 @@ async function applyRemote(data, urls) {
   } finally {
     applyingRemote = false;
   }
+  backfill();
 }
 
 function schedulePush() {
@@ -2438,15 +2595,19 @@ async function pushNow() {
   if (pushInFlight) { pendingPush = true; return; }
   pushInFlight = true;
   try {
-    await uploadPendingAssets();
+    await uploadPendingThumbs();
+    // Full photos follow the board write: the other device gets the grid (from thumbs) at
+    // once, and a second push publishes each full photo's path once it has landed.
+    const uploadFulls = async () => { if (await uploadPendingAssets()) pendingPush = true; };
     const data = serializeBoard(), body = JSON.stringify(data);
-    if (body === lastSyncedJson) { setSync('synced', 'synced'); return; }   // nothing actually changed
+    if (body === lastSyncedJson) { setSync('synced', 'synced'); await uploadFulls(); return; }   // nothing actually changed
     setSync('syncing', 'saving…');
     const res = await api('PUT', '/api/board?id=' + board.id, { data, rev: board.rev });
     if (res.ok) {
       board.rev = res.payload.rev;
       lastSyncedJson = body;
       setSync('synced', 'synced');
+      await uploadFulls();
     } else if (res.status === 409) {
       showConflict();
     } else if (res.status === 404) {
@@ -2471,12 +2632,14 @@ async function pullNow(force) {
       return;
     }
     const p = res.payload;
+    setRemoteUrls(p.assetUrls, p.thumbUrls);   // presigned URLs expire; take fresh ones every pull
     // rev only moves forward, so a newer rev means another device saved
     if (force || board.rev == null || p.rev > board.rev) {
       board.rev = p.rev;
-      if (p.data) await applyRemote(p.data, p.assetUrls);
+      if (p.data) await applyRemote(p.data);
     }
     setSync('synced', 'synced');
+    if (lib.some(a => a.local === false)) backfill();
   } catch (_) {
     setSync('offline', 'offline');
   }
@@ -2600,11 +2763,53 @@ async function initSync() {
   startPolling();
 }
 
+/* ---------- remembered UI state ----------
+   The board itself lives in IndexedDB; this is just where you were — scroll position and
+   which tray drawers were open — so reopening the app lands you back in the same spot. */
+const UI_KEY = 'instagrid_ui';
+function readUi() { try { return JSON.parse(localStorage.getItem(UI_KEY) || '{}') || {}; } catch (_) { return {}; } }
+function restoreUi() {
+  const u = readUi();
+  if (u.drawers) { drawerOpen.fresh = u.drawers.fresh !== false; drawerOpen.used = u.drawers.used !== false; }
+}
+function restoreScroll() {
+  const u = readUi(), stage = document.querySelector('.stage');
+  if (u.stage && stage) stage.scrollTop = u.stage;
+  if (u.win) window.scrollTo(0, u.win);
+}
+function saveUi() {
+  const stage = document.querySelector('.stage');
+  try {
+    localStorage.setItem(UI_KEY, JSON.stringify({
+      drawers: { fresh: drawerOpen.fresh, used: drawerOpen.used },
+      stage: stage ? Math.round(stage.scrollTop) : 0,
+      win: Math.round(window.scrollY || 0),
+    }));
+  } catch (_) {}
+}
+let uiT = null;
+const saveUiSoon = () => { clearTimeout(uiT); uiT = setTimeout(saveUi, 400); };
+window.addEventListener('scroll', saveUiSoon, { passive: true });
+{ const st = document.querySelector('.stage'); if (st) st.addEventListener('scroll', saveUiSoon, { passive: true }); }
+window.addEventListener('pagehide', saveUi);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveUi(); });
+
 /* ---------- init ---------- */
 (async function () {
+  restoreUi();
   db = await openDB(); ok = !!db;
   if (ok) {
-    const a = await all('assets'); if (a.length) { lib = a; lib.forEach(asset => cacheDisplayBlob(asset.id, asset.src)); }
+    // only the light `meta` store and the keys of `assets` — no full photo is read here
+    const [metas, fullKeys] = await Promise.all([all('meta'), allKeys('assets')]);
+    const onDisk = new Set(fullKeys), known = new Set(metas.map(m => m.id));
+    lib = metas.map(m => Object.assign(m, { local: onDisk.has(m.id) }));
+    // one-time upgrade: photos saved before `meta` existed get a record now and a thumb in backfill()
+    for (const k of fullKeys) {
+      if (known.has(k)) continue;
+      const rec = await getOne('assets', k); if (!rec) continue;
+      const a = { id: rec.id, name: rec.name || 'photo', w: rec.w, h: rec.h, path: rec.path || null, thumbPath: null, thumb: null, local: true };
+      lib.push(a); saveMeta(a);
+    }
     const st = (await all('state')).find(s => s.key === 'layout');
     if (st) { rows = Math.max(MIN_ROWS, st.rows || 3); total = rows * 3; if (st.RW && st.RH) { RW = st.RW; RH = st.RH; document.documentElement.style.setProperty('--ratio', RW + ' / ' + RH); } tiles = (st.tiles || []).map(t => t || null); while (tiles.length < total) tiles.push(null); const ids = new Set(lib.map(x => x.id)); tiles = tiles.map(t => { if (!t || !ids.has(t.imgId)) return null; t = demoteBanner(t); if (t.z == null) t.z = 1; delete t.mode; delete t.zoom; return t; }); $('ratioSeg').querySelectorAll('button').forEach(b => b.classList.toggle('active', parseInt(b.dataset.rw) === RW && parseInt(b.dataset.rh) === RH)); }
   }
@@ -2614,8 +2819,9 @@ async function initSync() {
   applyProfile();
   render(); renderTray(); updateExportUI(); syncZoom();
   hist = []; pos = -1; commit();
-  requestAnimationFrame(render);   // correct sizing once the stage has real dimensions
+  requestAnimationFrame(() => { render(); restoreScroll(); });   // correct sizing once the stage has real dimensions
   initSync();                      // no-op unless a board link is already in play
+  setTimeout(backfill, 600);       // missing thumbs, after the first paint has landed
 })();
 </script>
 </body>

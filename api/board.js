@@ -1,7 +1,7 @@
 /* /api/board — create, read, save and re-key a board.
 
    POST                  → mint a new board, returns { id, secret }
-   GET   ?id=…           → { rev, updatedAt, data, assetUrls }
+   GET   ?id=…           → { rev, updatedAt, data, assetUrls, thumbUrls }
    PUT   ?id=…           → save; body { rev, data } → { rev }, or 409 if rev is stale
    PATCH ?id=…           → rotate the secret, returns { secret }
 
@@ -30,28 +30,35 @@ async function getReadToken() {
 }
 
 /* Presigned GET URLs let the browser pull photos straight from the CDN instead of
-   streaming every byte back through this function. */
+   streaming every byte back through this function. Each photo can also have a small
+   thumbnail at `<assetId>.t`, signed separately so a device can paint the grid from
+   thumbs before any full photo has downloaded. */
 async function assetUrls(id, data) {
   const assets = (data && Array.isArray(data.assets)) ? data.assets : [];
-  const withPath = assets.filter(a => a && a.id && a.path);
-  if (!withPath.length) return {};
+  const jobs = [];
+  assets.forEach(a => {
+    if (!a || !a.id) return;
+    if (a.path) jobs.push(['full', a.id, a.id]);
+    if (a.thumbPath) jobs.push(['thumb', a.id, a.id + '.t']);
+  });
+  const full = {}, thumb = {};
+  if (!jobs.length) return { full, thumb };
 
   const token = await getReadToken();
   const validUntil = Math.min(Date.now() + ASSET_URL_TTL, readTokenUntil);
 
-  const out = {};
-  await Promise.all(withPath.map(async a => {
+  await Promise.all(jobs.map(async ([kind, key, assetId]) => {
     try {
       const { presignedUrl } = await presignUrl(token, {
         operation: 'get',
-        pathname: assetPath(id, a.id),
+        pathname: assetPath(id, assetId),
         access: 'private',
         validUntil,
       });
-      out[a.id] = presignedUrl;
+      (kind === 'full' ? full : thumb)[key] = presignedUrl;
     } catch { /* a missing asset shouldn't sink the whole board load */ }
   }));
-  return out;
+  return { full, thumb };
 }
 
 export default async function handler(req, res) {
@@ -81,12 +88,14 @@ export default async function handler(req, res) {
     const found = await authBoard(req, res, id);
     if (found.denied) return;
     const { board, etag } = found;
+    const urls = await assetUrls(id, board.data);
     return json(res, {
       rev: board.rev || 1,
       etag,
       updatedAt: board.updatedAt || null,
       data: board.data || null,
-      assetUrls: await assetUrls(id, board.data),
+      assetUrls: urls.full,
+      thumbUrls: urls.thumb,
     });
   }
 
